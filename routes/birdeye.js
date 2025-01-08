@@ -902,31 +902,30 @@ router.get('/traders', async function(req, res, next) {
             }
 
             allTraders.push(...traders);
-
-            for (const trader of traders) {
-                const { address, trade_count, pnl, volume } = trader;
-
-                const target = trade_count >= 50 && trade_count <= 1000 ? 'Y' : 'N';
-
-                try {
-                    // Use upsert to insert or update the trader
-                    await TopTrader.upsert({
-                        address,
-                        tradecount: trade_count,
-                        '7d': pnl,
-                        tokenvalue: volume,
-                        target_range: target,
-                        update_dt: moment().tz('Asia/Seoul').format('YYYY-MM-DD HH:mm:ss'),
-                    });
-                    console.log(`Upserted trader with address: ${address}`);
-                } catch (err) {
-                    console.error(`Error processing trader ${address}: `, err);
-                }
-            }
-
             offset += limit; // Increment the offset by the limit
         }
 
+        allTraders.reverse();
+
+        for (const trader of allTraders) {
+            const { address, trade_count, pnl, volume } = trader;
+            const target = trade_count >= 50 && trade_count <= 1000 ? 'Y' : 'N';
+            console.log("current time: ", moment().utc().format('YYYY-MM-DD HH:mm:ss'));
+            try {
+                // Use upsert to insert or update the trader
+                await TopTrader.upsert({
+                    address,
+                    tradecount: trade_count,
+                    '7d': pnl,
+                    tokenvalue: volume,
+                    target_range: target,
+                    update_dt: moment().utc().format('YYYY-MM-DD HH:mm:ss'),
+                });
+                console.log(`Upserted trader with address: ${address}`);
+            } catch (err) {
+                console.error(`Error processing trader ${address}: `, err);
+            }
+        }
         res.status(200).send(allTraders);
     } catch (error) {
         console.error('error fetching result', error);
@@ -934,79 +933,47 @@ router.get('/traders', async function(req, res, next) {
     }
 
 });
-router.get('/tradersonly', async function(req, res, next) {
-
-    const options = {
-        method: 'GET',
-        url: 'https://public-api.birdeye.so/trader/gainers-losers',
-        params: { type: '1W', sort_by: 'PnL', sort_type: 'desc', offset: '0', limit: '10' },
-        headers: { accept: 'application/json', 'x-chain': 'solana', 'X-API-KEY': process.env.X_API_KEY }
-    }
-
+router.get('/resettraders', async function(req, res, next) {
     try {
-        const allTraders = [];
-        const limit = 10;
+        const limit = 10; // Limit for batch processing (adjust as needed)
         let offset = 0;
-        const repetitions = 10;
 
-        for (let i = 0; i < repetitions; i++) {
-            const options = {
-                method: 'GET',
-                url: 'https://public-api.birdeye.so/trader/gainers-losers',
-                params: {
-                    type: '1W',
-                    sort_by: 'PnL',
-                    sort_type: 'desc',
-                    offset: offset.toString(),
-                    limit: limit.toString()
-                },
-                headers: {
-                    accept: 'application/json',
-                    'x-chain': 'solana',
-                    'X-API-KEY': process.env.X_API_KEY,
+        console.log(`Fetching data with offset: ${offset}`);
+
+        // Fetch traders from the database
+        const traders = await TopTrader.findAll({
+            where: {}, // Add conditions if necessary
+        });
+
+        if (!traders || traders.length === 0) {
+            console.log(`No more data found at offset ${offset}`);
+        } else {
+            // Iterate through the fetched traders
+            for (const trader of traders) {
+                // Check and update `target_skip` if null
+                if (trader.target_skip === null) {
+                    console.log(`Updating target_skip for trader with ID: ${trader.id}`);
+                    trader.target_skip = 'N';
+                    await trader.save(); // Save the updated trader back to the database
                 }
-            };
-
-            console.log(`Fetching data with offset: ${offset}`);
-            const result = await axios.request(options);
-            const traders = result.data.data.items;
-
-            if (!traders || traders.length === 0) {
-                console.log(`No more data found at offset ${offset}`);
-                break; // Exit the loop if no traders are found
+                // Check and update `target_range_field` based on the range
+                if (trader.tradecount >= 50 && trader.tradecount <= 1000) {
+                    console.log(`Updating target_range_field to 'Y' for trader with ID: ${trader.id}`);
+                    trader.target_range_field = 'Y'; // Assuming `target_range_field` is the column to update
+                } else {
+                    console.log(`Updating target_range_field to 'N' for trader with ID: ${trader.id}`);
+                    trader.target_range_field = 'N';
+                }
+                await trader.save(); // Save the updated trader back to the database
             }
-
-            allTraders.push(...traders);
-
-            // for (const trader of traders) {
-            //     const { address, trade_count, pnl, volume } = trader;
-            //
-            //     const target = trade_count >= 50 && trade_count <= 1000 ? 'Y' : 'N';
-            //
-            //     try {
-            //         // Use upsert to insert or update the trader
-            //         await TopTrader.upsert({
-            //             address,
-            //             tradecount: trade_count,
-            //             '7d': pnl,
-            //             tokenvalue: volume,
-            //             target,
-            //             insert_dt: moment().tz('Asia/Seoul').format('YYYY-MM-DD HH:mm:ss'),
-            //         });
-            //         console.log(`Upserted trader with address: ${address}`);
-            //     } catch (err) {
-            //         console.error(`Error processing trader ${address}: `, err);
-            //     }
-            // }
-
-            offset += limit; // Increment the offset by the limit
         }
 
-        res.status(200).send(allTraders);
+        res.status(200).send("Complete resetting traders");
     } catch (error) {
-        console.error('error fetching result', error);
+        console.error('Error fetching result:', error);
         res.status(400).send(error);
     }
+
 });
 router.get('/processtraders', async function(req, res) {
    try {

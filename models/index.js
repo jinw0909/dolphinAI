@@ -13,6 +13,9 @@ const sequelize = new Sequelize(process.env.DB_DATABASE, process.env.DB_USER, pr
     host: process.env.DB_HOST,
     dialect: 'mysql',
     timezone: '+09:00',
+    dialectOptions: {
+        timezone: "+09:00", // DB에서 가져올 때 시간 설정
+    },
     logging: false
 });
 
