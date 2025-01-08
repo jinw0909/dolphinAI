@@ -2,7 +2,6 @@ var express = require('express');
 var router = express.Router();
 const moment = require('moment-timezone');
 const axios = require('axios');
-const db = require('/Users/jinwoo/dolphinAI/dolphinAI/connection');
 const { TopTrader, TxHistory, Tokens, TradedTokens, sequelize} = require('../models');
 let tempUserAddress;
 let tempUserNum;
