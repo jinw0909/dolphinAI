@@ -17,7 +17,7 @@ module.exports = (sequelize) => {
             allowNull: true, // Allow null if the token name isn't available immediately
         },
         icon: {
-            type: DataTypes.STRING,
+            type: DataTypes.STRING(500),
             allowNull: true, // URL or path to the token's icon, can be null
         },
         price: {
