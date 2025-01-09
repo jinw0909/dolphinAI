@@ -52,6 +52,18 @@ module.exports = (sequelize) => {
         winrate: {
             type: DataTypes.FLOAT,
         },
+        total_pnl: {
+            type: DataTypes.FLOAT
+        },
+        total_pnl_rate: {
+            type: DataTypes.FLOAT
+        },
+        sol_amount: {
+            type: DataTypes.FLOAT
+        },
+        sol_balance: {
+            type: DataTypes.FLOAT
+        },
         '1d_rate': {
             type: DataTypes.FLOAT,
         },
@@ -60,6 +72,15 @@ module.exports = (sequelize) => {
         },
         '30d_rate': {
             type: DataTypes.FLOAT,
+        },
+        '30d_buy_count': {
+            type: DataTypes.INTEGER
+        },
+        '30d_sell_count': {
+            type: DataTypes.INTEGER
+        },
+        '30d_trade_count': {
+            type: DataTypes.INTEGER
         },
         '1d_pnl' : {
             type: DataTypes.FLOAT,

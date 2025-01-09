@@ -1,15 +1,16 @@
 require('dotenv').config();
+require('./scheduler');
 var createError = require('http-errors');
 var express = require('express');
 var path = require('path');
 var cookieParser = require('cookie-parser');
 var logger = require('morgan');
 
-var indexRouter = require('./routes/index');
-var usersRouter = require('./routes/users');
+const indexRouter = require('./routes/index');
+const usersRouter = require('./routes/users');
 const fetchRouter = require('./routes/fetch');
-const birdeyeRouter = require('./routes/birdeye');
-const tokensRouter = require('./routes/tokens');
+const { birdeyeRouter} = require('./routes/birdeye');
+const { tokensRouter } = require('./routes/tokens');
 
 var app = express();
 
