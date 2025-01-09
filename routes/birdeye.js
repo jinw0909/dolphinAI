@@ -267,7 +267,6 @@ const processTransactionData = async function () {
                     }
                 }
 
-
                 // Step 4: Insert or update rows in Tokens table
                 for (const [token, data] of Object.entries(tradedTokens)) {
                     try {
@@ -297,6 +296,7 @@ const processTransactionData = async function () {
                         '7d_token_count': stats.token_count,
                         '7d_pnl_per_token': stats.pnl_per_token,
                         '7d_cost_per_token': stats.cost_per_token,
+                        'sol_amount': stats.sol_amount
                         //'update_dt': moment().tz('Asia/Seoul').format('YYYY-MM-DD HH:mm:ss'), // Use current timestamp
                     },
                     {
@@ -392,7 +392,45 @@ const processUpnl = async function() {
             );
             //console.log(`Updated total UPnL (${totalUpnl}) for user: ${user_address}`);
         }
-        return "Unrealized profit calculation completed.";
+
+        // Step 2: Fetch Solana price
+        const solanaToken = await Tokens.findOne({
+            where: { address: 'So11111111111111111111111111111111111111112' },
+            attributes: ['price'],
+        });
+
+        if (!solanaToken || !solanaToken.price) {
+            console.error('Failed to fetch Solana price.');
+            return;
+        }
+
+        const solanaPrice = solanaToken.price;
+
+        // Step 3: Update sol_balance for TopTraders where target = 'Y'
+        const topTraders = await TopTrader.findAll({
+            where: { target: 'Y' },
+            attributes: ['address', 'sol_amount'],
+        });
+
+        for (const trader of topTraders) {
+            const { address, sol_amount } = trader;
+
+            if (!sol_amount) {
+                console.log(`Skipping trader ${address} due to missing sol_amount.`);
+                continue;
+            }
+
+            const solBalance = sol_amount * solanaPrice;
+
+            await TopTrader.update(
+                { sol_balance: solBalance },
+                { where: { address } }
+            );
+
+            console.log(`Updated sol_balance (${solBalance}) for trader: ${address}`);
+        }
+
+        return "Unrealized profit calculation completed and sol_balance updated.";
     } catch (error) {
         console.log("error calculating unrealized profit");
         // throw error;
@@ -533,7 +571,7 @@ const processTransactionsOnly = async function (fetchedData, userId, userAddress
     const wallet = {};
     const tradedTokens = new Map(); // Store token-specific metrics
     let transactionData = [];
-
+    let solAmount = 0; //Track the total amount of solana used or received
     let buyCount = 0;
     let sellCount = 0;
     let totalPnl = 0; // Aggregate total PnL across all tokens
@@ -563,6 +601,7 @@ const processTransactionsOnly = async function (fetchedData, userId, userAddress
             tradeVolume = amount * price; // Total trade volume in USD
             token = base.symbol;
             address = base.address;
+            solAmount += quote.ui_amount;
         } else if (quote.symbol === 'SOL' && quote.type_swap === 'from') {
             // Sell trade: Selling SPC for SOL
             tradeType = 'buy';
@@ -571,6 +610,7 @@ const processTransactionsOnly = async function (fetchedData, userId, userAddress
             tradeVolume = amount * price; // Total trade volume in USD
             token = base.symbol;
             address = base.address;
+            solAmount -= quote.ui_amount;
         } else if (base.symbol === 'SOL' && base.type_swap === 'from') {
             // Buy trade: Buying SPC with SOL
             tradeType = 'buy';
@@ -579,6 +619,7 @@ const processTransactionsOnly = async function (fetchedData, userId, userAddress
             tradeVolume = amount * price; // Total trade volume in USD
             token = quote.symbol;
             address = quote.address;
+            solAmount -= base.ui_amount;
         } else if (base.symbol === 'SOL' && base.type_swap === 'to') {
             // Sell trade: Selling SPC for SOL
             tradeType = 'sell';
@@ -587,6 +628,7 @@ const processTransactionsOnly = async function (fetchedData, userId, userAddress
             tradeVolume = amount * price; // Total trade volume in USD
             token = quote.symbol;
             address = quote.address;
+            solAmount += base.ui_amount;
         } else {
             console.error(`Unsupported transaction type: ${JSON.stringify(transaction)}`);
             continue; // Skip unsupported transactions
@@ -674,7 +716,7 @@ const processTransactionsOnly = async function (fetchedData, userId, userAddress
             symbol_address: base.address,
             position: tradeType,
             time: transaction.block_unix_time,
-            datetime: moment.unix(transaction.block_unix_time).tz('Asia/Seoul').format('YYYY-MM-DD HH:mm:ss'),
+            datetime: moment.unix(transaction.block_unix_time).utc().format('YYYY-MM-DD HH:mm:ss'),
             cost: price,
             balance: amount,
             size: tradeVolume,
@@ -717,6 +759,7 @@ const processTransactionsOnly = async function (fetchedData, userId, userAddress
         total_cost: totalCost,
         pnl_per_token: pnlPerToken,
         cost_per_token: costPerToken, //Include cost per token
+        sol_amount: solAmount,
         traded_tokens: tradedTokensObject, // Include token-specific metrics
     };
 
