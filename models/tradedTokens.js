@@ -64,6 +64,10 @@ module.exports = (sequelize) => {
         current: {
             type: DataTypes.STRING,
             defaultValue: 'N'
+        },
+        show: {
+            type: DataTypes.STRING,
+            defaultValue: 'N'
         }
     }, {
         tableName: 'Traded_Tokens',

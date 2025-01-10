@@ -27,6 +27,10 @@ module.exports = (sequelize) => {
         target: {
             type: DataTypes.STRING,
             defaultValue: 'N'
+        },
+        insert_dt: {
+            type: DataTypes.DATE,
+            defaultValue: DataTypes.NOW
         }
     }, {
         tableName: 'Tokens', // Explicitly set the table name

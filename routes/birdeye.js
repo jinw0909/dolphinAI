@@ -168,12 +168,10 @@ const processTransactionData = async function () {
                 let processResult = transactionCache.get(address)?.processResult;
 
                 if (!processResult) {
-                    // console.log(`No cached data for address: ${address}. Fetching and processing new data...`);
-
+                    console.log(`No cached data for address: ${address}. Fetching and processing new data...`);
                     // Fetch new transaction history and process it
                     const txHistory = await fetchTransactionHistory(address, 7);
                     processResult = await processTransactionsOnly(txHistory, trader.id, address);
-
                     // Cache the fetched and processed data
                     transactionCache.set(address, { txHistory, processResult });
                 } else {
@@ -182,7 +180,6 @@ const processTransactionData = async function () {
 
                 // Destructure the cached or newly processed data
                 const { transactions, metadata: stats } = processResult;
-
                 // Check if total_pnl is zero or negative
                 if (stats.total_pnl <= 0) {
                     console.log(`Total PnL is non-positive for address: ${address}. Setting target = 'N' and skipping`);
@@ -192,7 +189,6 @@ const processTransactionData = async function () {
                     );
                     continue;
                 }
-
                 // Step 3: Save processed transactions into txHistory
                 for (const tx of transactions) {
                     try {
@@ -209,7 +205,6 @@ const processTransactionData = async function () {
                         console.error(`Failed to insert transaction: ${tx.txhash}`, err.message);
                     }
                 }
-
                 // Step 4: Save traded tokens data into TradedTokens
                 const tradedTokens = stats.traded_tokens;
                 console.log("saving traded tokens data into TradedTokens");
@@ -485,12 +480,27 @@ const getExtraPnl = async function() {
                 const response = await axios.request(options);
                 const tokenList = response.data.data.items;
 
-                // Find the Solana (SOL) entry in the token list
-                const solToken = tokenList.find(token => token.address === 'So11111111111111111111111111111111111111111');
-                if (solToken) {
-                    solAmount = solToken.uiAmount || 0; // User-friendly amount
-                    solBalance = solToken.uiAmount * solToken.priceUsd; // Total balance in USD
-                }
+                // Initialize total variables
+                let totalSolAmount = 0;
+                let totalSolBalance = 0;
+
+                // Define the target addresses
+                const solAddresses = [
+                    'So11111111111111111111111111111111111111111',
+                    'So11111111111111111111111111111111111111112'
+                ];
+
+                // Loop through the target addresses and sum their values
+                solAddresses.forEach(address => {
+                    const token = tokenList.find(token => token.address === address);
+                    if (token) {
+                        totalSolAmount += token.uiAmount || 0; // Accumulate user-friendly amounts
+                        totalSolBalance += (token.uiAmount || 0) * (token.priceUsd || 0); // Accumulate total balances in USD
+                    }
+                });
+
+                console.log(`Total SOL Amount: ${totalSolAmount}`);
+                console.log(`Total SOL Balance (USD): ${totalSolBalance}`);
             } catch (apiError) {
                 console.error(`Failed to fetch Solana data for trader ${row.address}:`, apiError.message);
             }
@@ -510,11 +520,29 @@ const getExtraPnl = async function() {
             });
         }
 
-        return "successfully processed and updated day and month pnl info of TopTraders";
+        //Reset 'show to 'N' for all rows in both tables
+        await TopTrader.update({ show: 'N'}, { where: {} });
+        await TradedTokens.update({ show: 'N'}, { where: {} });
+
+        //Bulk update 'show' to 'Y' for TopTrader where 'target' is 'Y'
+        await TopTrader.update(
+            { show: 'Y' },
+            { where: { target: 'Y' }}
+        );
+
+        //Bulk update 'show' to 'Y' for TradedTokens where 'current' is 'Y'
+        await TradedTokens.update(
+            { show: 'Y' },
+            { where: { current: 'Y' }}
+        );
+
+        return "successfully processed and updated day and month pnl info of TopTraders. Set show to Y.";
     } catch (error) {
         console.error("error processing day and month pnl info of TopTraders", error);
         // throw error;
     }
+
+
 }
 // const getTotalPnl = async function() {
 //     try {

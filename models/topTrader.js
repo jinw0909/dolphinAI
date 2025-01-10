@@ -37,6 +37,11 @@ module.exports = (sequelize) => {
             allowNull: false,
             defaultValue: 'N'
         },
+        show: {
+            type: DataTypes.STRING,
+            allowNull: false,
+            defaultValue: 'N'
+        },
         target_confirm: {
             type: DataTypes.STRING,
             defaultValue: 'N'
