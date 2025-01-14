@@ -23,7 +23,7 @@ const getTraders = async function() {
         const allTraders = [];
         const limit = 10;
         let offset = 0;
-        const repetitions = 10;
+        const repetitions = 15;
 
         for (let i = 0; i < repetitions; i++) {
             const options = {
@@ -70,7 +70,9 @@ const getTraders = async function() {
                     '7d': pnl,
                     tokenvalue: volume,
                     target_range: target,
-                    update_dt: moment().utc().format('YYYY-MM-DD HH:mm:ss'),
+                    // update_dt: moment().utc().format('YYYY-MM-DD HH:mm:ss'),
+                }, {
+                    conflictFields: ['address'], // Optional: only for PostgreSQL
                 });
                 console.log(`Upserted trader with address: ${address}`);
             } catch (err) {
@@ -87,7 +89,7 @@ const processTraders = async function() {
     try {
         transactionCache.clear();
         //Step 1. Set all 'target' to 'N'
-        await TopTrader.update({target: 'N', target_confirm: 'N'}, {where: {}});
+        await TopTrader.update({show: 'N', target_confirm: 'N'}, {where: {}});
         let targetCount = 0;
         while (targetCount < 30) {
             //Step 2: Fetch rows with 'target_range = 'Y' and 'target_skip = 'N'
@@ -97,7 +99,7 @@ const processTraders = async function() {
                     target_skip: 'N',
                     target_confirm: 'N'
                 },
-                order: [['update_dt', 'DESC']]
+                order: [['insert_dt', 'DESC']]
             });
 
             if (rows.length === 0) {
@@ -118,7 +120,12 @@ const processTraders = async function() {
                         txHistory,
                         processResult
                     });
-                    await TopTrader.update({target: 'Y', target_confirm: 'Y'}, {where: {id: row.id}});
+
+                    await TopTrader.update({
+                        show: 'Y',
+                        target_confirm: 'Y',
+                        update_dt: moment().utc().format('YYYY-MM-DD HH:mm:ss')
+                    }, {where: {id: row.id}});
                     targetCount++;
                 } else {
                     await TopTrader.update({target_skip: 'Y', target_confirm: 'Y'}, {where: {id: row.id}});
@@ -127,7 +134,7 @@ const processTraders = async function() {
                 if (targetCount >= 30) break;
             }
         }
-        return `Processing complete. Total 'target' Y rows: ${targetCount}. ${
+        return `Processing complete. Total 'show' Y rows: ${targetCount}. ${
             targetCount < 30
                 ? 'Could not reach 30 rows due to insufficient eligible rows.'
                 : ''
@@ -136,149 +143,146 @@ const processTraders = async function() {
         console.error("Error while validating(processing) Traders and saving each tx cache");
     }
 }
+
+//main function
 const processTransactionData = async function () {
     console.log("executing processTransactionData");
     try {
-        await Tokens.update(
-            { target: 'N'},
-            { where: {}}
+        // Reset all 'show' column in TxHistory to 'N' before processing
+        await TxHistory.update(
+            { show: 'N' },
+            { where: {} }
         );
+        console.log("Setting all 'show' column in TxHistory to 'N'.");
+
+        await Tokens.update(
+            { ref: 'N' },
+            { where: {} }
+        );
+
+        console.log("Setting all 'ref' column in Tokens to 'N'.");
 
         await TradedTokens.update(
-            { current: 'N'},
-            { where: {}}
+            { show: 'N' },
+            { where: {} }
         );
 
+        console.log("Setting all 'show' column in Traded Tokens to 'N'.");
+
         const traders = await TopTrader.findAll({
-            where: { target: 'Y' },
-            // limit: 10,
-            order: [['update_dt', 'DESC']]
+            where: { show: 'Y' },
+            limit: 30,
+            order: [['insert_dt', 'DESC']]
         });
 
         if (!traders || traders.length === 0) {
-            console.log('No traders found with target = Y');
+            console.log('No traders found with show = Y');
             return [];
         }
+
         let metadata = [];
         for (const trader of traders) {
             const { address } = trader;
             console.log("extracting tx history of address: " + address);
             try {
-                // Retrieve processResult from the cache
                 let processResult = transactionCache.get(address)?.processResult;
 
                 if (!processResult) {
                     console.log(`No cached data for address: ${address}. Fetching and processing new data...`);
-                    // Fetch new transaction history and process it
                     const txHistory = await fetchTransactionHistory(address, 7);
                     processResult = await processTransactionsOnly(txHistory, trader.id, address);
-                    // Cache the fetched and processed data
                     transactionCache.set(address, { txHistory, processResult });
                 } else {
                     console.log(`Using cached process result for address: ${address}`);
                 }
 
-                // Destructure the cached or newly processed data
                 const { transactions, metadata: stats } = processResult;
-                // Check if total_pnl is zero or negative
+
                 if (stats.total_pnl <= 0) {
-                    console.log(`Total PnL is non-positive for address: ${address}. Setting target = 'N' and skipping`);
+                    console.log(`Total PnL is non-positive for address: ${address}. Setting show = 'N' and skipping`);
                     await TopTrader.update(
-                        { target: 'N'},
-                        { where: {address}}
+                        { show: 'N' },
+                        { where: { address } }
                     );
                     continue;
                 }
-                // Step 3: Save processed transactions into txHistory
+
+
+                // Insert or update rows in TxHistory and set 'show' to 'Y'
                 for (const tx of transactions) {
                     try {
-                        const existingTx = await TxHistory.findOne({
-                            where: { txhash: tx.txhash },
+                        // Add or override the 'show' field in the transaction object
+                        const txData = { ...tx, show: 'Y' };
+
+                        await TxHistory.upsert(txData, {
+                            conflictFields: ['txhash'], // Specify the unique constraint field(s)
                         });
-                        if (existingTx) {
-                            // console.log(`Transaction already exists: ${tx.txhash}`);
-                            continue;
-                        }
-                        await TxHistory.create(tx);
-                        // console.log(`Inserted transaction: ${tx.txhash}`);
+
+                        //console.log(`Upserted transaction: ${tx.txhash}`);
                     } catch (err) {
-                        console.error(`Failed to insert transaction: ${tx.txhash}`, err.message);
+                        console.error(`Failed to upsert transaction: ${tx.txhash}`, err.message);
                     }
                 }
-                // Step 4: Save traded tokens data into TradedTokens
+                console.log("transaction history upsert completed");
+
                 const tradedTokens = stats.traded_tokens;
-                console.log("saving traded tokens data into TradedTokens");
-
-                // for (const [token, data] of Object.entries(tradedTokens)) {
-                //     try {
-                //         await TradedTokens.upsert({
-                //             user_num: trader.id, // Assuming this is the user address or identifier
-                //             symbol: token,
-                //             buy_count: data.buy_count || 0, // Fallback if data is missing
-                //             sell_count: data.sell_count || 0,
-                //             positive_sell_count: data.positive_sell_count || 0,
-                //             pnl: data.pnl || 0,
-                //             pnl_percentage: data.pnl_percentage || 0,
-                //             cost: data.cost || 0,
-                //             avg_price: data.avg_price || 0,
-                //             holding: data.holding || 0,
-                //             win_rate: data.win_rate || 0,
-                //             current: 'Y',
-                //             symbol_address: data.symbol_address, // Ensure this matches the condition
-                //             user_address: address
-                //         }, {
-                //             conflictFields: ['user_address', 'symbol_address'], // Fields to match on upsert
-                //         });
-                //         console.log(`Upserted traded token: ${token}`);
-                //     } catch (err) {
-                //         console.error(`Failed to upsert traded token: ${token}`, err.message);
-                //     }
-                // }
                 for (const [token, data] of Object.entries(tradedTokens)) {
                     try {
-                        //console.log(`Processing token: ${token}, data:`, data, `address: ${address}`);
-                        const result = await TradedTokens.upsert({
-                            user_num: trader.id,
-                            symbol: token,
-                            buy_count: data.buy_count || 0,
-                            sell_count: data.sell_count || 0,
-                            positive_sell_count: data.positive_sell_count || 0,
-                            pnl: data.pnl || 0,
-                            pnl_percentage: data.pnl_percentage || 0,
-                            cost: data.cost || 0,
-                            avg_price: data.avg_price || 0,
-                            holding: data.holding || 0,
-                            win_rate: data.win_rate || 0,
-                            current: 'Y',
-                            symbol_address: data.symbol_address || null,
-                            user_address: address || null
-                        }, {
-                            conflictFields: ['user_address', 'symbol_address'],
+                        // Check if a record with the same user_address and symbol_address exists
+                        const existingRecord = await TradedTokens.findOne({
+                            where: {
+                                user_address: address || null,
+                                symbol_address: data.symbol_address || null
+                            }
                         });
-                        //console.log(`Upsert result for token ${token}:`, result);
+
+                        if (existingRecord) {
+                            // Update the 'show' field to 'Y' if the record exists
+                            await existingRecord.update({ show: 'Y' });
+                            console.log(`Updated 'show' to 'Y' for user_address: ${address} and symbol_address: ${data.symbol_address}`);
+                        } else {
+                            // Insert the new record
+                            await TradedTokens.create({
+                                user_num: trader.id,
+                                symbol: token,
+                                buy_count: data.buy_count || 0,
+                                sell_count: data.sell_count || 0,
+                                positive_sell_count: data.positive_sell_count || 0,
+                                pnl: data.pnl || 0,
+                                pnl_percentage: data.pnl_percentage || 0,
+                                cost: data.cost || 0,
+                                avg_price: data.avg_price || 0,
+                                holding: data.holding || 0,
+                                win_rate: data.win_rate || 0,
+                                show: 'Y',
+                                symbol_address: data.symbol_address || null,
+                                user_address: address || null
+                            });
+                            console.log(`Inserted new traded token: ${token}`);
+                        }
                     } catch (err) {
-                        console.error(`Failed to upsert traded token: ${token}`, err);
-                        //throw err;
+                        console.error(`Failed to process traded token: ${token}`, err);
                     }
                 }
 
-                // Step 4: Insert or update rows in Tokens table
+
+                console.log("TradedTokens upsert completed");
+
                 for (const [token, data] of Object.entries(tradedTokens)) {
                     try {
-                        // Use upsert to insert or update the token
                         await Tokens.upsert({
                             address: data.symbol_address,
-                            symbol: token, // Insert or update the token name
-                            target: 'Y',   // Set target to 'Y'
+                            symbol: token,
+                            ref: 'Y',
+                            insert_dt: moment().utc().format('YYYY-MM-DD HH:mm:ss')
                         });
-
-                        //console.log(`Upserted token: ${token}`);
                     } catch (err) {
                         console.error(`Failed to upsert token: ${token}`, err.message);
                     }
                 }
 
-                // Step 5: Update TopTrader table with derived metadata
+                console.log("saved tokens data into Tokens");
+
                 await TopTrader.update(
                     {
                         winrate: stats.total_win_rate,
@@ -291,17 +295,14 @@ const processTransactionData = async function () {
                         '7d_token_count': stats.token_count,
                         '7d_pnl_per_token': stats.pnl_per_token,
                         '7d_cost_per_token': stats.cost_per_token,
-                        'sol_amount': stats.sol_amount
-                        //'update_dt': moment().tz('Asia/Seoul').format('YYYY-MM-DD HH:mm:ss'), // Use current timestamp
                     },
                     {
                         where: { address },
                     }
                 );
 
-                //console.log(`Updated trader metadata for address: ${address}`);
+                console.log("updated toptrader info");
 
-                // Collect metadata for this trader
                 metadata.push({
                     address,
                     win_rate: stats.total_win_rate,
@@ -316,11 +317,11 @@ const processTransactionData = async function () {
                 console.error(`Error processing transactions for address ${address}:`, error);
             }
         }
+
         console.log("completed processTransactionData");
         return metadata;
     } catch (error) {
         console.error('Error fetching transaction data:', error);
-        // throw error;
     }
 };
 
@@ -329,7 +330,7 @@ const processUpnl = async function() {
     try {
         // Fetch all active traded tokens (current = 'Y')
         const tradedTokens = await TradedTokens.findAll({
-            where: { current: 'Y' },
+            where: { show: 'Y' },
             include: [
                 {
                     model: Tokens,
@@ -356,8 +357,16 @@ const processUpnl = async function() {
                 Token: { price: currentPrice },
             } = token;
 
-            if (!currentPrice || !holding || !avg_price) {
-                console.log(`Skipping token ${symbol_address} for user ${user_address} due to missing data.`);
+            if (!holding) {
+                console.log(`Skipping token ${symbol_address} for user ${user_address} has holding of ${holding}.`);
+                continue;
+            }
+            if (!currentPrice) {
+                console.log(`Skipping token ${symbol_address} for user ${user_address}. Cannot load the price of token: ${currentPrice}`);
+                continue;
+            }
+            if (!avg_price) {
+                console.log(`Skipping token ${symbol_address} for user ${user_address}. avg_price is not provided: ${avg_price}`);
                 continue;
             }
 
@@ -388,44 +397,24 @@ const processUpnl = async function() {
             //console.log(`Updated total UPnL (${totalUpnl}) for user: ${user_address}`);
         }
 
-        // Step 2: Fetch Solana price
-        const solanaToken = await Tokens.findOne({
-            where: { address: 'So11111111111111111111111111111111111111112' },
-            attributes: ['price'],
-        });
+        // // Step 2: Fetch Solana price
+        // const solanaToken = await Tokens.findOne({
+        //     where: { address: 'So11111111111111111111111111111111111111112' },
+        //     attributes: ['price'],
+        // });
+        //
+        // if (!solanaToken || !solanaToken.price) {
+        //     console.error('Failed to fetch Solana price.');
+        //     return;
+        // }
+        //
+        // const solanaPrice = solanaToken.price;
+        // const topTraders = await TopTrader.findAll({
+        //     where: { show: 'Y' },
+        //     attributes: ['address', 'sol_amount'],
+        // });
 
-        if (!solanaToken || !solanaToken.price) {
-            console.error('Failed to fetch Solana price.');
-            return;
-        }
-
-        const solanaPrice = solanaToken.price;
-
-        // Step 3: Update sol_balance for TopTraders where target = 'Y'
-        const topTraders = await TopTrader.findAll({
-            where: { target: 'Y' },
-            attributes: ['address', 'sol_amount'],
-        });
-
-        for (const trader of topTraders) {
-            const { address, sol_amount } = trader;
-
-            if (!sol_amount) {
-                console.log(`Skipping trader ${address} due to missing sol_amount.`);
-                continue;
-            }
-
-            const solBalance = sol_amount * solanaPrice;
-
-            await TopTrader.update(
-                { sol_balance: solBalance },
-                { where: { address } }
-            );
-
-            console.log(`Updated sol_balance (${solBalance}) for trader: ${address}`);
-        }
-
-        return "Unrealized profit calculation completed and sol_balance updated.";
+        return "Unrealized profit calculation completed.";
     } catch (error) {
         console.log("error calculating unrealized profit");
         // throw error;
@@ -435,9 +424,10 @@ const getExtraPnl = async function() {
     try {
         const rows = await TopTrader.findAll({
             where: {
-                target: 'Y',
+                show: 'Y',
+                '30d_pnl': null
             },
-            order: [['update_dt', 'DESC']]
+            order: [['insert_dt', 'DESC']]
         });
 
         if (rows.length === 0) {
@@ -461,7 +451,42 @@ const getExtraPnl = async function() {
             let monthSellCount = processResultMonth.metadata.total_sell_count;
             let monthTradeCount = processResultMonth.metadata.total_transactions;
 
-            // Step 2: Fetch Solana balance (sol_amount and sol_balance) using external API
+            await TopTrader.update({
+                '1d_pnl': dayPnl,
+                '1d_rate': dayRate,
+                '30d_pnl': monthPnl,
+                '30d_rate': monthRate,
+                '30d_buy_count': monthBuyCount,
+                '30d_sell_count': monthSellCount,
+                '30d_trade_count': monthTradeCount,
+            }, {
+                where: {id: row.id}
+            });
+        }
+
+        return "successfully processed and updated day and month pnl info of TopTraders.";
+    } catch (error) {
+        console.error("error processing day and month pnl info of TopTraders", error);
+        // throw error;
+    }
+
+
+}
+const getSolanaPrice = async function() {
+    try {
+        const rows = await TopTrader.findAll({
+            where: {
+                show: 'Y',
+            },
+            order: [['insert_dt', 'DESC']]
+        });
+
+        if (rows.length === 0) {
+            console.log('No trader to process extra pnl');
+            return;
+        }
+
+        for (const row of rows) {
             const options = {
                 method: 'GET',
                 url: 'https://public-api.birdeye.so/v1/wallet/token_list',
@@ -473,16 +498,12 @@ const getExtraPnl = async function() {
                 },
             };
 
-            let solAmount = 0;
-            let solBalance = 0;
+            let totalSolAmount = 0;
+            let totalSolBalance = 0;
 
             try {
                 const response = await axios.request(options);
                 const tokenList = response.data.data.items;
-
-                // Initialize total variables
-                let totalSolAmount = 0;
-                let totalSolBalance = 0;
 
                 // Define the target addresses
                 const solAddresses = [
@@ -499,11 +520,83 @@ const getExtraPnl = async function() {
                     }
                 });
 
-                console.log(`Total SOL Amount: ${totalSolAmount}`);
-                console.log(`Total SOL Balance (USD): ${totalSolBalance}`);
+                console.log(`SOL Amount: ${totalSolAmount}`);
+                console.log(`SOL Balance (USD): ${totalSolBalance}`);
+
+                await TopTrader.update({
+                    'sol_amount': totalSolAmount,
+                    'sol_balance': totalSolBalance
+                }, {
+                    where: {id: row.id}
+                });
             } catch (apiError) {
                 console.error(`Failed to fetch Solana data for trader ${row.address}:`, apiError.message);
             }
+
+
+        }
+    } catch (err) {
+        console.error("error while fetching solana price");
+    }
+}
+const setTarget = async function() {
+    //Reset 'target to 'N' for all rows in both tables
+    await TopTrader.update({ target: 'N'}, { where: {} });
+    await TradedTokens.update({ current: 'N'}, { where: {} });
+    await Tokens.update({target: 'N'}, {where: {}});
+    await TxHistory.update({ current: 'N'}, {where: {}});
+
+    //Bulk update 'show' to 'Y' for TopTrader where 'target' is 'Y'
+    await TopTrader.update(
+        { target: 'Y' },
+        { where: { show: 'Y' }}
+    );
+
+    //Bulk update 'current' to 'Y' for TradedTokens where 'show' is 'Y'
+    await TradedTokens.update(
+        { current: 'Y' },
+        { where: { show: 'Y' }}
+    );
+
+    await Tokens.update(
+        { target: 'Y'},
+        { where: { ref: 'Y'}}
+    );
+
+    await TxHistory.update(
+        { current: 'Y'},
+        { where: { show: 'Y'}}
+    );
+}
+const getExtraPnlDay = async function() {
+    try {
+        const rows = await TopTrader.findAll({
+            where: {
+                show: 'Y',
+            },
+            order: [['insert_dt', 'DESC']]
+        });
+
+        if (rows.length === 0) {
+            console.log('No trader to process extra pnl');
+            return;
+        }
+
+        for (const row of rows) {
+            //Step 3: Analyze the row
+            //console.log("row.address: ", row.address);
+            let txHistoryDay = await fetchTransactionHistory(row.address, 1);
+            let processResultDay = await processTransactionsOnly(txHistoryDay, row.id, row.address);
+            let dayPnl = processResultDay.metadata.total_pnl;
+            let dayRate = processResultDay.metadata.total_pnl_percentage;
+
+            let txHistoryMonth = await fetchTransactionHistory(row.address, 30);
+            let processResultMonth = await processTransactionsOnly(txHistoryMonth, row.id, row.address);
+            let monthPnl = processResultMonth.metadata.total_pnl;
+            let monthRate = processResultMonth.metadata.total_pnl_percentage;
+            let monthBuyCount = processResultMonth.metadata.total_buy_count;
+            let monthSellCount = processResultMonth.metadata.total_sell_count;
+            let monthTradeCount = processResultMonth.metadata.total_transactions;
 
             await TopTrader.update({
                 '1d_pnl': dayPnl,
@@ -513,30 +606,12 @@ const getExtraPnl = async function() {
                 '30d_buy_count': monthBuyCount,
                 '30d_sell_count': monthSellCount,
                 '30d_trade_count': monthTradeCount,
-                'sol_amount': solAmount, // Update Solana amount
-                'sol_balance': solBalance, // Update Solana balance in USD
             }, {
                 where: {id: row.id}
             });
         }
 
-        //Reset 'show to 'N' for all rows in both tables
-        await TopTrader.update({ show: 'N'}, { where: {} });
-        await TradedTokens.update({ show: 'N'}, { where: {} });
-
-        //Bulk update 'show' to 'Y' for TopTrader where 'target' is 'Y'
-        await TopTrader.update(
-            { show: 'Y' },
-            { where: { target: 'Y' }}
-        );
-
-        //Bulk update 'show' to 'Y' for TradedTokens where 'current' is 'Y'
-        await TradedTokens.update(
-            { show: 'Y' },
-            { where: { current: 'Y' }}
-        );
-
-        return "successfully processed and updated day and month pnl info of TopTraders. Set show to Y.";
+        return "successfully processed and updated day and month pnl info of TopTraders.";
     } catch (error) {
         console.error("error processing day and month pnl info of TopTraders", error);
         // throw error;
@@ -693,43 +768,27 @@ const processTransactionsOnly = async function (fetchedData, userId, userAddress
         }
 
         if (!price) {
-            console.error(`Invalid price for transaction: ${JSON.stringify(transaction)}`);
+            console.error(`Invalid price for transaction: ${transaction.tx_hash}`);
             continue;
         }
 
-        //console.log(tradeType);
-
-        // const tradeType = base.type_swap === 'to' ? 'buy' : 'sell';
-        // const amount = base.ui_amount;
-        //
-        // let price = base.price || (quote.nearest_price && quote.ui_amount && base.ui_amount
-        //     ? (quote.nearest_price * quote.ui_amount) / base.ui_amount
-        //     : null);
-        //
-        // if (!price) {
-        //     console.error(`Unable to determine price for token ${token}`);
-        //     continue;
-        // }
-        // price = toProperNumber(price);
-        // const tradeVolume = amount * price;
-
-        // Initialize the traded token entry if not present
-        if (!tradedTokens.has(token)) {
-            tradedTokens.set(token, {
-                buy_count: 0,
-                sell_count: 0,
-                positive_sell_count: 0, // Track positive PnL sell trades
-                pnl: 0,
-                pnl_percentage: 0,
-                cost: 0,
-                avg_price: 0,
-                symbol_address: address
-            });
-        }
-        const tokenData = tradedTokens.get(token);
-
         if (tradeType === 'buy') {
+            // Initialize the traded token entry only on a buy trade
+            if (!tradedTokens.has(token)) {
+                tradedTokens.set(token, {
+                    buy_count: 0,
+                    sell_count: 0,
+                    positive_sell_count: 0, // Track positive PnL sell trades
+                    pnl: 0,
+                    pnl_percentage: 0,
+                    cost: 0,
+                    avg_price: 0,
+                    symbol_address: address
+                });
+            }
             buyCount++;
+
+            const tokenData = tradedTokens.get(token);
             tokenData.buy_count++;
             tokenData.cost += tradeVolume;
             totalCost += tradeVolume; // Add to total cost across all tokens
@@ -741,11 +800,20 @@ const processTransactionsOnly = async function (fetchedData, userId, userAddress
 
             tokenData.avg_price = current.averagePrice;
             tokenData.holding = current.amount;
+
         } else if (tradeType === 'sell') {
+            // Skip sell trades if the token has no buy history
+            if (!tradedTokens.has(token)) {
+                console.warn(`Skipping sell trade for token ${token} as no prior buy trade exists.`);
+                continue;
+            }
+
+            const tokenData = tradedTokens.get(token);
             if (!wallet[token] || wallet[token].amount < amount) {
                 console.error(`Insufficient amount to sell for token ${token}`);
                 continue;
             }
+
             sellCount++;
             tokenData.sell_count++;
 
@@ -767,24 +835,26 @@ const processTransactionsOnly = async function (fetchedData, userId, userAddress
             tokenData.holding = current.amount;
         }
 
-        // Add the transaction data
-        transactionData.push({
-            txhash: transaction.tx_hash,
-            symbol: token,
-            symbol_address: base.address,
-            position: tradeType,
-            time: transaction.block_unix_time,
-            datetime: moment.unix(transaction.block_unix_time).utc().format('YYYY-MM-DD HH:mm:ss'),
-            cost: price,
-            balance: amount,
-            size: tradeVolume,
-            pnl: tokenData.pnl,
-            pnl_percentage: tokenData.pnl_percentage,
-            user_num: userId,
-            user_address: userAddress,
-            hold_amount: wallet[token]?.amount || 0,
-            avg_price: wallet[token]?.averagePrice || 0,
-        });
+        const tokenData = tradedTokens.get(token);
+        if (tokenData) {
+            transactionData.push({
+                txhash: transaction.tx_hash,
+                symbol: token,
+                symbol_address: tokenData.symbol_address,
+                position: tradeType,
+                time: transaction.block_unix_time,
+                datetime: moment.unix(transaction.block_unix_time).utc().format('YYYY-MM-DD HH:mm:ss'),
+                cost: price,
+                balance: amount,
+                size: tradeVolume,
+                pnl: tokenData.pnl,
+                pnl_percentage: tokenData.pnl_percentage,
+                user_num: userId,
+                user_address: userAddress,
+                hold_amount: wallet[token]?.amount || 0,
+                avg_price: wallet[token]?.averagePrice || 0,
+            });
+        }
     }
 
     // Calculate win rates for all tokens
@@ -913,6 +983,24 @@ router.get('/extrapnl', async function(req, res) {
     } catch (error) {
         console.error('Error processing extra pnls:', error);
         res.status(500).send('Error processing extra pnls');
+    }
+});
+router.get('/solana', async function(req, res) {
+    try {
+        const result = await getSolanaPrice();
+        res.status(200).send("setting solana price complete");
+    } catch (error) {
+        console.error('Error fetching solana price:', error);
+        res.status(500).send('Error fetching solana price');
+    }
+});
+router.get('/settarget', async function(req, res) {
+    try {
+        const result = await setTarget();
+        res.status(200).send("setting target complete");
+    } catch (error) {
+        console.error('Error setting target rows:', error);
+        res.status(500).send('Error setting target rows');
     }
 });
 
@@ -1129,5 +1217,8 @@ module.exports = {
     processTraders,
     processTransactionData,
     processUpnl,
-    getExtraPnl
+    getExtraPnl,
+    getSolanaPrice,
+    setTarget,
+    getExtraPnlDay
 };

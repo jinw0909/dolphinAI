@@ -68,6 +68,14 @@ module.exports = (sequelize) => {
             type: DataTypes.FLOAT,
             allowNull: false,
         },
+        current: {
+            type: DataTypes.STRING,
+            defaultValue: 'N'
+        },
+        show: {
+            type: DataTypes.STRING,
+            defaultValue: 'N'
+        }
     }, {
         tableName: 'Trade_History',
         timestamps: false,

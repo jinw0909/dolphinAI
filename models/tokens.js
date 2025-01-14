@@ -28,6 +28,10 @@ module.exports = (sequelize) => {
             type: DataTypes.STRING,
             defaultValue: 'N'
         },
+        ref: {
+            type: DataTypes.STRING,
+            defaultValue: 'N'
+        },
         insert_dt: {
             type: DataTypes.DATE,
             defaultValue: DataTypes.NOW

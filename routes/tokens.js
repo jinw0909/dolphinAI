@@ -1,13 +1,16 @@
 const express = require('express');
 const router = express.Router();
-const { Tokens } = require('../models');
+const { Tokens, sequelize } = require('../models');
 const axios = require('axios');
 
 // Define getIcon function
 const getIcon = async () => {
     // Step 1: Fetch tokens where `icon` is null
     const tokens = await Tokens.findAll({
-        where: { icon: null }, // Target tokens with no icon
+        where: {
+            icon: null, // Icon is null
+            ref: 'Y'
+        }
     });
 
     if (!tokens || tokens.length === 0) {
@@ -57,12 +60,12 @@ const getIcon = async () => {
 const getPrice = async () => {
     // Step 1: Fetch tokens with target = 'Y'
     const tokens = await Tokens.findAll({
-        where: { target: 'Y' },
+        where: { ref: 'Y' },
     });
 
     if (!tokens || tokens.length === 0) {
-        console.log('No tokens found with target = Y');
-        return 'No tokens found with target = Y';
+        console.log('No tokens found with ref = Y');
+        return 'No tokens found with ref = Y';
     }
 
     // Step 2: Group tokens into chunks of 100 addresses
