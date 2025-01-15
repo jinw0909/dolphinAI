@@ -1,7 +1,9 @@
 const cron = require('node-cron'); // Import node-cron for scheduling
-const { getTraders, processTraders, processTransactionData, processUpnl, getExtraPnl, getSolanaPrice, setTarget, getExtraPnlDay } = require('./routes/birdeye'); // Import the function
+const { getTraders, processTraders, processTransactionData, processUpnl, getExtraPnl, getSolanaPrice, getExtraPnlDay } = require('./routes/birdeye'); // Import the function
 const { getIcon, getPrice } = require('./routes/tokens');
 const { clean } = require('./routes/cleaner');
+const { setTarget } = require('./routes/target');
+const { processPortfolio } = require('./routes/portfolio');
 // Schedule the function using node-cron
 // step 1. getTraders
 cron.schedule('0 * * * *', async () => {
@@ -16,7 +18,7 @@ cron.schedule('0 * * * *', async () => {
     }
 });
 // step 2. processTraders
-cron.schedule('3 * * * *', async () => {
+cron.schedule('2 * * * *', async () => {
     const now = new Date();
     const currentTime = now.toISOString(); // Log the current time in ISO format
     console.log(`Running processTraders() at ${currentTime}`);
@@ -52,7 +54,7 @@ cron.schedule('20 * * * *', async () => {
     }
 });
 // step 5. getIcon
-cron.schedule('24 * * * *', async () => {
+cron.schedule('23 * * * *', async () => {
     const now = new Date();
     const currentTime = now.toISOString(); // Log the current time in ISO format
     console.log(`Running getIcon() at ${currentTime}`);
@@ -64,7 +66,7 @@ cron.schedule('24 * * * *', async () => {
     }
 });
 // step 6. processUpnl
-cron.schedule('31 * * * *', async () => {
+cron.schedule('28 * * * *', async () => {
     const now = new Date();
     const currentTime = now.toISOString(); // Log the current time in ISO format
     console.log(`Running processUpnl() at ${currentTime}`);
@@ -75,20 +77,20 @@ cron.schedule('31 * * * *', async () => {
         console.error('Error during processUpnl():', error.message);
     }
 });
-// step 7. getSolanaPrice
-cron.schedule('33 * * * *', async () => {
+// step 7. processPortfolio
+cron.schedule('30 * * * *', async () => {
     const now = new Date();
     const currentTime = now.toISOString(); // Log the current time in ISO format
-    console.log(`Running getSolanaPrice() at ${currentTime}`);
+    console.log(`Running processPortfolio() at ${currentTime}`);
     try {
-        await getSolanaPrice(); // Call the function
-        console.log('getSolanaPrice() completed successfully');
+        await processPortfolio(); // Call the function
+        console.log('processPortfolio() completed successfully');
     } catch (error) {
-        console.error('Error during getSolanaPrice():', error.message);
+        console.error('Error during processPortfolio():', error.message);
     }
 });
 // step 8. getExtraPnl
-cron.schedule('36 * * * *', async () => {
+cron.schedule('35 * * * *', async () => {
     const now = new Date();
     const currentTime = now.toISOString(); // Log the current time in ISO format
     console.log(`Running getExtraPnl() at ${currentTime}`);
@@ -100,7 +102,7 @@ cron.schedule('36 * * * *', async () => {
     }
 });
 // step 9. setTarget
-cron.schedule('42 * * * *', async () => {
+cron.schedule('40 * * * *', async () => {
     const now = new Date();
     const currentTime = now.toISOString(); // Log the current time in ISO format
     console.log(`Running setTarget() at ${currentTime}`);
@@ -112,7 +114,7 @@ cron.schedule('42 * * * *', async () => {
     }
 });
 // step 10. clean
-cron.schedule('44 * * * *', async () => {
+cron.schedule('42 * * * *', async () => {
     const now = new Date();
     const currentTime = now.toISOString(); // Log the current time in ISO format
     console.log(`Running clean() at ${currentTime}`);

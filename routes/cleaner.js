@@ -1,115 +1,43 @@
-// const express = require('express');
-// const router = express.Router();
-// const { TopTrader, TxHistory, Tokens, TradedTokens, sequelize } = require('../models');
-// const { Op } = require('sequelize');
-// const clean = async function () {
-//     try {
-//         // Start a transaction
-//         const transaction = await sequelize.transaction();
-//
-//         // Step 1: Fetch and delete rows from the Tokens table
-//         const deletedTokens = await Tokens.findAll({
-//             where: {
-//                 ref: { [Op.ne]: 'Y' }, // ref is not 'Y'
-//                 target: { [Op.ne]: 'Y' } // target is not 'Y'
-//             },
-//             attributes: ['address'], // Only retrieve the address field
-//             transaction
-//         });
-//
-//         const addressesToDelete = deletedTokens.map(token => token.address);
-//
-//         // If no addresses to delete, exit early
-//         if (addressesToDelete.length === 0) {
-//             console.log('No matching tokens to delete.');
-//             await transaction.commit();
-//             return;
-//         }
-//
-//         // Delete the matching rows from the Tokens table
-//         await Tokens.destroy({
-//             where: {
-//                 address: addressesToDelete
-//             },
-//             transaction
-//         });
-//
-//         // Step 2: Delete rows from TxHistory table
-//         await TxHistory.destroy({
-//             where: {
-//                 symbol_address: addressesToDelete
-//             },
-//             transaction
-//         });
-//
-//         // Step 3: Delete rows from TradedTokens table
-//         await TradedTokens.destroy({
-//             where: {
-//                 symbol_address: addressesToDelete
-//             },
-//             transaction
-//         });
-//
-//         // Step 4: Delete rows from TopTrader table
-//         // Get IDs of the most recent 200 rows where target != 'Y' and show != 'Y'
-//         const recentTopTraderIds = await TopTrader.findAll({
-//             where: {
-//                 target: { [Op.ne]: 'Y' }, // target is not 'Y'
-//                 show: { [Op.ne]: 'Y' } // show is not 'Y'
-//             },
-//             order: [['insert_dt', 'DESC']], // Order by most recent
-//             limit: 300, // Get the most recent 300 rows
-//             attributes: ['id'], // Fetch only IDs
-//             transaction
-//         });
-//
-//         const idsToExclude = recentTopTraderIds.map(row => row.id);
-//
-//         // Delete rows except the most recent 200
-//         await TopTrader.destroy({
-//             where: {
-//                 target: { [Op.ne]: 'Y' }, // target is not 'Y'
-//                 show: { [Op.ne]: 'Y' }, // show is not 'Y'
-//                 id: { [Op.notIn]: idsToExclude } // Exclude recent 200 rows
-//             },
-//             transaction
-//         });
-//
-//         // Commit the transaction
-//         await transaction.commit();
-//
-//         console.log('Cleanup successful.');
-//     } catch (error) {
-//         // Rollback the transaction in case of error
-//         console.error('Error during cleanup:', error);
-//         await transaction.rollback();
-//     }
-// };
-//
-// /* GET home page. */
-// router.get('/', function (req, res, next) {
-//     res.render('index', { title: 'Express' });
-// });
-//
-//
-// // Expose the clean function for external usage (if needed)
-// router.get('/clean', async function (req, res, next) {
-//     try {
-//         await clean();
-//         res.status(200).send('Cleanup process completed.');
-//     } catch (error) {
-//         res.status(500).send('Error during cleanup.');
-//     }
-// });
-//
-// module.exports = {
-//     cleanerRouter: router,
-//     clean
-// };
 const express = require('express');
 const router = express.Router();
-const { TxHistory, Tokens, TradedTokens, sequelize } = require('../models');
+const { TxHistory, Tokens, TradedTokens, UserWallet, sequelize, TopTrader} = require('../models');
 
+const setTarget = async function() {
+
+    //Reset 'target to 'N' for all rows in both tables
+    await TopTrader.update({ target: 'N'}, { where: {} });
+    await TradedTokens.update({ current: 'N'}, { where: {} });
+    await Tokens.update({target: 'N'}, {where: {}});
+    await TxHistory.update({ current: 'N'}, {where: {}});
+    await UserWallet.update({current: 'N'}, {where: {}});
+
+    //Bulk update 'show' to 'Y' for TopTrader where 'target' is 'Y'
+    await TopTrader.update(
+        { target: 'Y' },
+        { where: { show: 'Y' }}
+    );
+
+    //Bulk update 'current' to 'Y' for TradedTokens where 'show' is 'Y'
+    await TradedTokens.update(
+        { current: 'Y' },
+        { where: { show: 'Y' }}
+    );
+
+    await Tokens.update(
+        { target: 'Y'},
+        { where: { ref: 'Y'}}
+    );
+
+    await TxHistory.update(
+        { current: 'Y'},
+        { where: { show: 'Y'}}
+    );
+
+    await UserWallet.update(
+        { current: 'Y'},
+        { where: { show: 'Y'}}
+    );
+}
 const clean = async function () {
     try {
         // Start a transaction
@@ -142,6 +70,14 @@ const clean = async function () {
         });
         console.log(`TxHistory table: Deleted ${txHistoryDeletedCount} rows.`);
 
+        const userWalletDeletedCount = await UserWallet.destroy({
+            where: {
+                current: 'N' // current is 'N'
+            },
+            transaction
+        });
+        console.log(`UserWallet table: Deleted ${userWalletDeletedCount} rows.`);
+
         // Commit the transaction
         await transaction.commit();
         console.log('Cleanup process completed successfully.');
@@ -153,12 +89,18 @@ const clean = async function () {
 };
 
 /* GET home page. */
-router.get('/', function (req, res, next) {
-    res.render('index', { title: 'Express' });
-});
+//
+// router.get('/target', async function (req, res, next) {
+//     try {
+//         await setTarget();
+//         res.status(200).send('complete setting target completed.');
+//     } catch (error) {
+//         res.status(500).send('Error during setting target.');
+//     }
+// });
 
 // Expose the clean function for external usage (if needed)
-router.get('/clean', async function (req, res, next) {
+router.get('/', async function (req, res, next) {
     try {
         await clean();
         res.status(200).send('Cleanup process completed.');
@@ -169,5 +111,6 @@ router.get('/clean', async function (req, res, next) {
 
 module.exports = {
     cleanerRouter: router,
-    clean
+    clean,
+    setTarget
 };

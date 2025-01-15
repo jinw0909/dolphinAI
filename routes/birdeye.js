@@ -2,11 +2,14 @@ const express = require('express');
 const router = express.Router();
 const moment = require('moment-timezone');
 const axios = require('axios');
-const { TopTrader, TxHistory, Tokens, TradedTokens, sequelize} = require('../models');
+const { TopTrader, TxHistory, Tokens, TradedTokens, UserWallet, sequelize} = require('../models');
+
 let tempUserAddress;
 let tempUserNum;
 let tempTxHistory;
+
 const transactionCache = new Map();
+
 function toProperNumber(value) {
     return Number(value);
 }
@@ -90,6 +93,7 @@ const processTraders = async function() {
         transactionCache.clear();
         //Step 1. Set all 'target' to 'N'
         await TopTrader.update({show: 'N', target_confirm: 'N'}, {where: {}});
+        console.log("set show and confirm to N");
         let targetCount = 0;
         while (targetCount < 30) {
             //Step 2: Fetch rows with 'target_range = 'Y' and 'target_skip = 'N'
@@ -539,35 +543,42 @@ const getSolanaPrice = async function() {
         console.error("error while fetching solana price");
     }
 }
-const setTarget = async function() {
-    //Reset 'target to 'N' for all rows in both tables
-    await TopTrader.update({ target: 'N'}, { where: {} });
-    await TradedTokens.update({ current: 'N'}, { where: {} });
-    await Tokens.update({target: 'N'}, {where: {}});
-    await TxHistory.update({ current: 'N'}, {where: {}});
-
-    //Bulk update 'show' to 'Y' for TopTrader where 'target' is 'Y'
-    await TopTrader.update(
-        { target: 'Y' },
-        { where: { show: 'Y' }}
-    );
-
-    //Bulk update 'current' to 'Y' for TradedTokens where 'show' is 'Y'
-    await TradedTokens.update(
-        { current: 'Y' },
-        { where: { show: 'Y' }}
-    );
-
-    await Tokens.update(
-        { target: 'Y'},
-        { where: { ref: 'Y'}}
-    );
-
-    await TxHistory.update(
-        { current: 'Y'},
-        { where: { show: 'Y'}}
-    );
-}
+// const setTarget = async function() {
+//
+//     //Reset 'target to 'N' for all rows in both tables
+//     await TopTrader.update({ target: 'N'}, { where: {} });
+//     await TradedTokens.update({ current: 'N'}, { where: {} });
+//     await Tokens.update({target: 'N'}, {where: {}});
+//     await TxHistory.update({ current: 'N'}, {where: {}});
+//     await UserWallet.update({current: 'N'}, {where: {}});
+//
+//     //Bulk update 'show' to 'Y' for TopTrader where 'target' is 'Y'
+//     await TopTrader.update(
+//         { target: 'Y' },
+//         { where: { show: 'Y' }}
+//     );
+//
+//     //Bulk update 'current' to 'Y' for TradedTokens where 'show' is 'Y'
+//     await TradedTokens.update(
+//         { current: 'Y' },
+//         { where: { show: 'Y' }}
+//     );
+//
+//     await Tokens.update(
+//         { target: 'Y'},
+//         { where: { ref: 'Y'}}
+//     );
+//
+//     await TxHistory.update(
+//         { current: 'Y'},
+//         { where: { show: 'Y'}}
+//     );
+//
+//     await UserWallet.update(
+//         { current: 'Y'},
+//         { where: { show: 'Y'}}
+//     );
+// }
 const getExtraPnlDay = async function() {
     try {
         const rows = await TopTrader.findAll({
@@ -994,15 +1005,15 @@ router.get('/solana', async function(req, res) {
         res.status(500).send('Error fetching solana price');
     }
 });
-router.get('/settarget', async function(req, res) {
-    try {
-        const result = await setTarget();
-        res.status(200).send("setting target complete");
-    } catch (error) {
-        console.error('Error setting target rows:', error);
-        res.status(500).send('Error setting target rows');
-    }
-});
+// router.get('/settarget', async function(req, res) {
+//     try {
+//         const result = await setTarget();
+//         res.status(200).send("setting target complete");
+//     } catch (error) {
+//         console.error('Error setting target rows:', error);
+//         res.status(500).send('Error setting target rows');
+//     }
+// });
 
 //extra endpoints
 router.get('/traders/:number', async function(req, res) {
@@ -1219,6 +1230,6 @@ module.exports = {
     processUpnl,
     getExtraPnl,
     getSolanaPrice,
-    setTarget,
+    // setTarget,
     getExtraPnlDay
 };

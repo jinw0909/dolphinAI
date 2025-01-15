@@ -55,7 +55,6 @@ const getIcon = async () => {
 
     return 'Token icons updated successfully';
 };
-
 // Define getPrice function
 const getPrice = async () => {
     // Step 1: Fetch tokens with target = 'Y'
@@ -112,6 +111,53 @@ const getPrice = async () => {
 
     return 'Token prices updated successfully';
 };
+// Define completeSymbol function
+const completeSymbol = async () => {
+    const tokens = await Tokens.findAll({
+        where: {
+            ref: 'Y',
+            symbol: ''
+        }
+    });
+
+    if (!tokens || tokens.length === 0) {
+        console.log('No tokens found with an empty symbol name');
+        return 'No tokens found with an emtpy symbol name';
+    }
+
+    // Step 2: Iterate over tokens and fetch icon data
+    for (const token of tokens) {
+        const options = {
+            method: 'GET',
+            url: 'https://public-api.birdeye.so/defi/v3/token/meta-data/single',
+            params: { address: token.address },
+            headers: {
+                accept: 'application/json',
+                'x-chain': 'solana',
+                'X-API-KEY': '334a0b3f35d34690a336afd02073ee29',
+            },
+        };
+
+        try {
+            const result = await axios.request(options);
+            const data = result.data.data;
+
+            // Step 3: Update the `icon` field in the Tokens table
+            if (data.symbol) {
+                await token.update({
+                    symbol: data.symbol, // Update with the fetched icon URL
+                });
+                console.log(`Updated token: ${token.symbol}(${token.address}) with symbol name: ${data.symbol}`);
+            }
+        } catch (err) {
+            console.error(`Failed to fetch or update symbol name for token: ${token.symbol}(${token.address})`, err.message);
+        }
+    }
+
+    return 'Token icons updated successfully';
+
+
+}
 
 // Add getIcon to router
 router.get('/icon', async (req, res) => {
@@ -140,4 +186,5 @@ module.exports = {
     tokensRouter: router,
     getPrice,
     getIcon,
+    completeSymbol
 };

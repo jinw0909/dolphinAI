@@ -12,6 +12,8 @@ const fetchRouter = require('./routes/fetch');
 const { birdeyeRouter} = require('./routes/birdeye');
 const { tokensRouter } = require('./routes/tokens');
 const { cleanerRouter} = require('./routes/cleaner');
+const { portfolioRouter} = require('./routes/portfolio');
+const { targetRouter } = require('./routes/target');
 
 var app = express();
 
@@ -30,7 +32,9 @@ app.use('/users', usersRouter);
 app.use('/fetch', fetchRouter);
 app.use('/birdeye', birdeyeRouter);
 app.use('/tokens', tokensRouter);
-app.use('/cleaner', cleanerRouter);
+app.use('/clean', cleanerRouter);
+app.use('/portfolio', portfolioRouter);
+app.use('/target', targetRouter);
 
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {
