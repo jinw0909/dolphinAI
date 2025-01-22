@@ -58,7 +58,7 @@ module.exports = (sequelize) => {
             type: DataTypes.FLOAT,
         },
         total_pnl: {
-            type: DataTypes.FLOAT
+            type: DataTypes.FLOAT,
         },
         total_pnl_rate: {
             type: DataTypes.FLOAT

@@ -126,7 +126,7 @@ cron.schedule('42 * * * *', async () => {
     }
 });
 // step 11. getExtraPnlDay
-cron.schedule('50 */6 * * *', async () => {
+cron.schedule('50 0,6,12,18 * * *', async () => {
     const now = new Date();
     const currentTime = now.toISOString(); // Log the current time in ISO format
     console.log(`Running getExtraPnlDay() at ${currentTime}`);

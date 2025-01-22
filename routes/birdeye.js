@@ -235,8 +235,8 @@ const processTransactionData = async function () {
                         // Check if a record with the same user_address and symbol_address exists
                         const existingRecord = await TradedTokens.findOne({
                             where: {
-                                user_address: address || null,
-                                symbol_address: data.symbol_address || null
+                                user_address: address,
+                                symbol_address: data.symbol_address
                             }
                         });
 

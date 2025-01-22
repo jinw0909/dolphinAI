@@ -37,6 +37,11 @@ const setTarget = async function() {
         { current: 'Y'},
         { where: { show: 'Y'}}
     );
+
+    // await CrawledWallet.update(
+    //     { current: 'Y' },
+    //     { where: { show: 'Y'}}
+    // )
 }
 // const clean = async function () {
 //     try {

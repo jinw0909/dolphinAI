@@ -4,6 +4,7 @@ const TxHistoryModel = require('./txHistory');
 const TokensModel = require('./tokens');
 const TradedTokensModel = require('./tradedTokens');
 const UserWalletModel = require('./userWallet');
+// const CrawledWalletModel = require('./crawledWallet');
 
 // const sequelize = new Sequelize('dolphin', 'admin', 'qwer1234', {
 //     host: 'database-2.c5eaqgsmmklh.ap-northeast-2.rds.amazonaws.com',
@@ -26,6 +27,7 @@ const TxHistory = TxHistoryModel(sequelize);
 const Tokens = TokensModel(sequelize);
 const TradedTokens = TradedTokensModel(sequelize);
 const UserWallet = UserWalletModel(sequelize);
+// const CrawledWallet = CrawledWalletModel(sequelize);
 
 TradedTokens.belongsTo(Tokens, {
     foreignKey: 'symbol_address',
@@ -59,5 +61,6 @@ module.exports = {
     TxHistory,
     Tokens,
     TradedTokens,
-    UserWallet
+    UserWallet,
+    // CrawledWallet
 };

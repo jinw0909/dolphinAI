@@ -78,6 +78,14 @@ const clean = async function () {
         });
         console.log(`UserWallet table: Deleted ${userWalletDeletedCount} rows.`);
 
+        // const crawledWalletDeletedCount = await CrawledWallet.destroy({
+        //     where: {
+        //         current: 'N'
+        //     },
+        //     transaction
+        // });
+        // console.log(`CrawledWallet table: Deleted ${crawledWalletDeletedCount} rows.`);
+
         // Commit the transaction
         await transaction.commit();
         console.log('Cleanup process completed successfully.');
