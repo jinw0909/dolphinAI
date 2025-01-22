@@ -176,6 +176,7 @@ const processTransactionData = async function () {
         const traders = await TopTrader.findAll({
             where: { show: 'Y' },
             limit: 30,
+            // limit: 5,
             order: [['insert_dt', 'DESC']]
         });
 
@@ -230,25 +231,50 @@ const processTransactionData = async function () {
                 console.log("transaction history upsert completed");
 
                 const tradedTokens = stats.traded_tokens;
+                // for (const [token, data] of Object.entries(tradedTokens)) {
+                //     try {
+                //         // Check if a record with the same user_address and symbol_address exists
+                //         const existingRecord = await TradedTokens.findOne({
+                //             where: {
+                //                 user_address: address,
+                //                 symbol_address: token
+                //             }
+                //         });
+                //
+                //         if (existingRecord) {
+                //             // Update the 'show' field to 'Y' if the record exists
+                //             await existingRecord.update({ show: 'Y' });
+                //             console.log(`Updated 'show' to 'Y' for user_address: ${address} and symbol_address: ${data.symbol_address}`);
+                //         } else {
+                //             // Insert the new record
+                //             await TradedTokens.create({
+                //                 user_num: trader.id,
+                //                 symbol: data.symbol,
+                //                 buy_count: data.buy_count || 0,
+                //                 sell_count: data.sell_count || 0,
+                //                 positive_sell_count: data.positive_sell_count || 0,
+                //                 pnl: data.pnl || 0,
+                //                 pnl_percentage: data.pnl_percentage || 0,
+                //                 cost: data.cost || 0,
+                //                 avg_price: data.avg_price || 0,
+                //                 holding: data.holding || 0,
+                //                 win_rate: data.win_rate || 0,
+                //                 show: 'Y',
+                //                 symbol_address: token || null,
+                //                 user_address: address || null
+                //             });
+                //             console.log(`Inserted new traded token: ${token}`);
+                //         }
+                //     } catch (err) {
+                //         console.error(`Failed to process traded token: ${token}`, err);
+                //     }
+                // }
+
                 for (const [token, data] of Object.entries(tradedTokens)) {
                     try {
-                        // Check if a record with the same user_address and symbol_address exists
-                        const existingRecord = await TradedTokens.findOne({
-                            where: {
-                                user_address: address,
-                                symbol_address: data.symbol_address
-                            }
-                        });
-
-                        if (existingRecord) {
-                            // Update the 'show' field to 'Y' if the record exists
-                            await existingRecord.update({ show: 'Y' });
-                            console.log(`Updated 'show' to 'Y' for user_address: ${address} and symbol_address: ${data.symbol_address}`);
-                        } else {
-                            // Insert the new record
-                            await TradedTokens.create({
+                        await TradedTokens.upsert({
                                 user_num: trader.id,
-                                symbol: token,
+                                symbol: data.symbol,
                                 buy_count: data.buy_count || 0,
                                 sell_count: data.sell_count || 0,
                                 positive_sell_count: data.positive_sell_count || 0,
@@ -259,15 +285,21 @@ const processTransactionData = async function () {
                                 holding: data.holding || 0,
                                 win_rate: data.win_rate || 0,
                                 show: 'Y',
-                                symbol_address: data.symbol_address || null,
+                                symbol_address: token || null,
                                 user_address: address || null
+                            },
+                            {
+                                conflictFields: ['user_address', 'symbol_address'], // Fields to identify conflicts
                             });
-                            console.log(`Inserted new traded token: ${token}`);
-                        }
+
+                        console.log(`Upserted traded token: ${token}`);
                     } catch (err) {
-                        console.error(`Failed to process traded token: ${token}`, err);
+                        console.error(`Failed to upsert traded token: ${token}`, err);
                     }
                 }
+
+                console.log("TradedTokens upsert completed");
+
 
 
                 console.log("TradedTokens upsert completed");
@@ -275,8 +307,8 @@ const processTransactionData = async function () {
                 for (const [token, data] of Object.entries(tradedTokens)) {
                     try {
                         await Tokens.upsert({
-                            address: data.symbol_address,
-                            symbol: token,
+                            address: token,
+                            symbol: data.symbol,
                             ref: 'Y',
                             insert_dt: moment().utc().format('YYYY-MM-DD HH:mm:ss')
                         });
@@ -285,7 +317,7 @@ const processTransactionData = async function () {
                     }
                 }
 
-                console.log("saved tokens data into Tokens");
+                console.log("Tokens upsert completed");
 
                 await TopTrader.update(
                     {
@@ -313,9 +345,11 @@ const processTransactionData = async function () {
                     total_buy_count: stats.total_buy_count,
                     total_sell_count: stats.total_sell_count,
                     token_count: stats.token_count,
+                    '7d_pnl': stats.total_pnl,
+                    '7d_pnl_percentage': stats.total_pnl_percentage,
+                    '7d_cost': stats.total_cost,
                     pnl_per_token: stats.pnl_per_token,
                     cost_per_token: stats.cost_per_token,
-                    total_pnl_percentage: stats.total_pnl_percentage,
                 });
             } catch (error) {
                 console.error(`Error processing transactions for address ${address}:`, error);
@@ -705,8 +739,208 @@ const getExtraPnlDay = async function() {
 //     }
 // }
 
+// const processTransactionsOnly = async function (fetchedData, userId, userAddress) {
+//     console.log('process only address: ', userAddress);
+//     if (!fetchedData || fetchedData.length === 0) {
+//         console.error("Fetched data is empty or invalid.");
+//         return { transactions: [], metadata: {} };
+//     }
+//
+//     const wallet = {};
+//     const tradedTokens = new Map(); // Store token-specific metrics
+//     let transactionData = [];
+//     //let solAmount = 0; //Track the total amount of solana used or received
+//     let buyCount = 0;
+//     let sellCount = 0;
+//     let totalPnl = 0; // Aggregate total PnL across all tokens
+//     let totalCost = 0; // Aggregate total purchase volume
+//     let positiveSellCount = 0; // Count of all positive sell trades
+//
+//     for (const transaction of fetchedData) {
+//         const base = transaction.base;
+//         const quote = transaction.quote;
+//
+//         if (!base || !quote) continue; // Skip invalid transactions
+//         //if (base.symbol === "SOL") continue; // Skip SOL transactions
+//
+//         // const token = base.symbol;
+//         // const address = base.address;
+//
+//         let token;
+//         let address;
+//         let tradeType;
+//         let amount, price, tradeVolume;
+//
+//         if (quote.symbol === 'SOL' && quote.type_swap === 'to') {
+//             // Buy trade: Buying SPC with SOL
+//             tradeType = 'sell';
+//             amount = base.ui_amount; // SPC amount
+//             price = toProperNumber(base.price) || (quote.ui_amount * quote.nearest_price / base.ui_amount);
+//             tradeVolume = amount * price; // Total trade volume in USD
+//             token = base.symbol;
+//             address = base.address;
+//             //solAmount += quote.ui_amount;
+//         } else if (quote.symbol === 'SOL' && quote.type_swap === 'from') {
+//             // Sell trade: Selling SPC for SOL
+//             tradeType = 'buy';
+//             amount = base.ui_amount; // SPC amount
+//             price = toProperNumber(base.price) || (quote.ui_amount * quote.nearest_price / base.ui_amount);
+//             tradeVolume = amount * price; // Total trade volume in USD
+//             token = base.symbol;
+//             address = base.address;
+//             //solAmount -= quote.ui_amount;
+//         } else if (base.symbol === 'SOL' && base.type_swap === 'from') {
+//             // Buy trade: Buying SPC with SOL
+//             tradeType = 'buy';
+//             amount = quote.ui_amount; // SPC amount
+//             price = toProperNumber(quote.price) || (base.ui_amount * base.nearest_price / quote.ui_amount); // SPC price in USD
+//             tradeVolume = amount * price; // Total trade volume in USD
+//             token = quote.symbol;
+//             address = quote.address;
+//             //solAmount -= base.ui_amount;
+//         } else if (base.symbol === 'SOL' && base.type_swap === 'to') {
+//             // Sell trade: Selling SPC for SOL
+//             tradeType = 'sell';
+//             amount = quote.ui_amount; // SPC amount
+//             price = toProperNumber(quote.price) || (base.ui_amount * base.nearest_price / quote.ui_amount); // SPC price in USD
+//             tradeVolume = amount * price; // Total trade volume in USD
+//             token = quote.symbol;
+//             address = quote.address;
+//             //solAmount += base.ui_amount;
+//         } else {
+//             console.error(`Unsupported transaction type: ${JSON.stringify(transaction)}`);
+//             continue; // Skip unsupported transactions
+//         }
+//
+//         if (!price) {
+//             console.error(`Invalid price for transaction: ${transaction.tx_hash}`);
+//             continue;
+//         }
+//
+//         if (tradeType === 'buy') {
+//             // Initialize the traded token entry only on a buy trade
+//             if (!tradedTokens.has(token)) {
+//                 tradedTokens.set(token, {
+//                     buy_count: 0,
+//                     sell_count: 0,
+//                     positive_sell_count: 0, // Track positive PnL sell trades
+//                     pnl: 0,
+//                     pnl_percentage: 0,
+//                     cost: 0,
+//                     avg_price: 0,
+//                     symbol_address: address
+//                 });
+//             }
+//             buyCount++;
+//
+//             const tokenData = tradedTokens.get(token);
+//             tokenData.buy_count++;
+//             tokenData.cost += tradeVolume;
+//             totalCost += tradeVolume; // Add to total cost across all tokens
+//
+//             if (!wallet[token]) wallet[token] = { averagePrice: 0, amount: 0 };
+//             const current = wallet[token];
+//             current.amount += amount;
+//             current.averagePrice = (current.averagePrice * (current.amount - amount) + amount * price) / current.amount;
+//
+//             tokenData.avg_price = current.averagePrice;
+//             tokenData.holding = current.amount;
+//
+//         } else if (tradeType === 'sell') {
+//             // Skip sell trades if the token has no buy history
+//             if (!tradedTokens.has(token)) {
+//                 console.warn(`Skipping sell trade for token ${token} as no prior buy trade exists.`);
+//                 continue;
+//             }
+//
+//             const tokenData = tradedTokens.get(token);
+//             if (!wallet[token] || wallet[token].amount < amount) {
+//                 console.error(`Insufficient amount to sell for token ${token}`);
+//                 continue;
+//             }
+//
+//             sellCount++;
+//             tokenData.sell_count++;
+//
+//             const current = wallet[token];
+//             const pnl = amount * (price - current.averagePrice);
+//             totalPnl += pnl; // Aggregate total PnL
+//
+//             if (pnl > 0) {
+//                 tokenData.positive_sell_count++;
+//                 positiveSellCount++;
+//             }
+//
+//             tokenData.pnl += pnl; // Aggregate PnL for the token
+//             current.amount -= amount;
+//
+//             if (tokenData.cost > 0) {
+//                 tokenData.pnl_percentage = (tokenData.pnl / tokenData.cost) * 100;
+//             }
+//             tokenData.holding = current.amount;
+//         }
+//
+//         const tokenData = tradedTokens.get(token);
+//         if (tokenData) {
+//             transactionData.push({
+//                 txhash: transaction.tx_hash,
+//                 symbol: token,
+//                 symbol_address: tokenData.symbol_address,
+//                 position: tradeType,
+//                 time: transaction.block_unix_time,
+//                 datetime: moment.unix(transaction.block_unix_time).utc().format('YYYY-MM-DD HH:mm:ss'),
+//                 cost: price,
+//                 balance: amount,
+//                 size: tradeVolume,
+//                 pnl: tokenData.pnl,
+//                 pnl_percentage: tokenData.pnl_percentage,
+//                 user_num: userId,
+//                 user_address: userAddress,
+//                 hold_amount: wallet[token]?.amount || 0,
+//                 avg_price: wallet[token]?.averagePrice || 0,
+//             });
+//         }
+//     }
+//
+//     // Calculate win rates for all tokens
+//     tradedTokens.forEach((tokenData) => {
+//         if (tokenData.sell_count > 0) {
+//             tokenData.win_rate = (tokenData.positive_sell_count / tokenData.sell_count) * 100;
+//         } else {
+//             tokenData.win_rate = 0;
+//         }
+//     });
+//
+//     const tokenCount = tradedTokens.size; // Number of unique tokens traded
+//     const totalWinRate = sellCount > 0 ? (positiveSellCount / sellCount) * 100 : 0; // Win rate for all transactions
+//     const totalPnlPercentage = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0; // Total PnL percentage
+//     const pnlPerToken = tokenCount > 0 ? totalPnl / tokenCount : 0; // PnL per token
+//     const costPerToken = tokenCount > 0 ? totalCost / tokenCount : 0; // Cost per token
+//
+//     // Convert tradedTokens map to an object for metadata
+//     const tradedTokensObject = Object.fromEntries(tradedTokens);
+//
+//     // Generate metadata
+//     const metadata = {
+//         total_transactions: buyCount + sellCount,
+//         total_buy_count: buyCount,
+//         total_sell_count: sellCount,
+//         total_pnl: totalPnl,
+//         total_pnl_percentage: totalPnlPercentage,
+//         total_win_rate: totalWinRate,
+//         token_count: tokenCount,
+//         total_cost: totalCost,
+//         pnl_per_token: pnlPerToken,
+//         cost_per_token: costPerToken, //Include cost per token
+//         //sol_amount: solAmount,
+//         traded_tokens: tradedTokensObject, // Include token-specific metrics
+//     };
+//
+//     //console.log("Metadata: ", metadata);
+//     return { transactions: transactionData, metadata };
+// };
 const processTransactionsOnly = async function (fetchedData, userId, userAddress) {
-    console.log('process only address: ', userAddress);
+    console.log('Processing only address: ', userAddress);
     if (!fetchedData || fetchedData.length === 0) {
         console.error("Fetched data is empty or invalid.");
         return { transactions: [], metadata: {} };
@@ -715,67 +949,58 @@ const processTransactionsOnly = async function (fetchedData, userId, userAddress
     const wallet = {};
     const tradedTokens = new Map(); // Store token-specific metrics
     let transactionData = [];
-    //let solAmount = 0; //Track the total amount of solana used or received
     let buyCount = 0;
     let sellCount = 0;
     let totalPnl = 0; // Aggregate total PnL across all tokens
     let totalCost = 0; // Aggregate total purchase volume
     let positiveSellCount = 0; // Count of all positive sell trades
 
+    // Stablecoin addresses
+    const stablecoinAddresses = [
+        "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", // USDC
+        "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB", // USDT (example, replace if incorrect)
+        "So11111111111111111111111111111111111111112", // SOL
+    ];
+
     for (const transaction of fetchedData) {
         const base = transaction.base;
         const quote = transaction.quote;
 
         if (!base || !quote) continue; // Skip invalid transactions
-        //if (base.symbol === "SOL") continue; // Skip SOL transactions
 
-        // const token = base.symbol;
-        // const address = base.address;
+        // Skip stablecoin exchanges (USDC <-> USDT, USDC <-> SOL, etc.)
+        if (
+            stablecoinAddresses.includes(base.address) &&
+            stablecoinAddresses.includes(quote.address)
+        ) {
+            console.warn(`Skipping stablecoin exchange transaction: ${transaction.tx_hash}`);
+            continue;
+        }
 
         let token;
         let address;
         let tradeType;
         let amount, price, tradeVolume;
 
-        if (quote.symbol === 'SOL' && quote.type_swap === 'to') {
-            // Buy trade: Buying SPC with SOL
-            tradeType = 'sell';
+        if (stablecoinAddresses.includes(quote.address)) {
+            // Valid SPC trade with stablecoin as the quote currency
+            tradeType = quote.type_swap === 'to' ? 'sell' : 'buy';
             amount = base.ui_amount; // SPC amount
-            price = toProperNumber(base.price) || (quote.ui_amount * quote.nearest_price / base.ui_amount);
+            price = base.price || (quote.ui_amount * quote.nearest_price / base.ui_amount);
             tradeVolume = amount * price; // Total trade volume in USD
             token = base.symbol;
             address = base.address;
-            //solAmount += quote.ui_amount;
-        } else if (quote.symbol === 'SOL' && quote.type_swap === 'from') {
-            // Sell trade: Selling SPC for SOL
-            tradeType = 'buy';
-            amount = base.ui_amount; // SPC amount
-            price = toProperNumber(base.price) || (quote.ui_amount * quote.nearest_price / base.ui_amount);
-            tradeVolume = amount * price; // Total trade volume in USD
-            token = base.symbol;
-            address = base.address;
-            //solAmount -= quote.ui_amount;
-        } else if (base.symbol === 'SOL' && base.type_swap === 'from') {
-            // Buy trade: Buying SPC with SOL
-            tradeType = 'buy';
+        } else if (stablecoinAddresses.includes(base.address)) {
+            // Valid SPC trade with stablecoin as the base currency
+            tradeType = base.type_swap === 'from' ? 'buy' : 'sell';
             amount = quote.ui_amount; // SPC amount
-            price = toProperNumber(quote.price) || (base.ui_amount * base.nearest_price / quote.ui_amount); // SPC price in USD
+            price = quote.price || (base.ui_amount * base.nearest_price / quote.ui_amount);
             tradeVolume = amount * price; // Total trade volume in USD
             token = quote.symbol;
             address = quote.address;
-            //solAmount -= base.ui_amount;
-        } else if (base.symbol === 'SOL' && base.type_swap === 'to') {
-            // Sell trade: Selling SPC for SOL
-            tradeType = 'sell';
-            amount = quote.ui_amount; // SPC amount
-            price = toProperNumber(quote.price) || (base.ui_amount * base.nearest_price / quote.ui_amount); // SPC price in USD
-            tradeVolume = amount * price; // Total trade volume in USD
-            token = quote.symbol;
-            address = quote.address;
-            //solAmount += base.ui_amount;
         } else {
             console.error(`Unsupported transaction type: ${JSON.stringify(transaction)}`);
-            continue; // Skip unsupported transactions
+            continue;
         }
 
         if (!price) {
@@ -785,59 +1010,59 @@ const processTransactionsOnly = async function (fetchedData, userId, userAddress
 
         if (tradeType === 'buy') {
             // Initialize the traded token entry only on a buy trade
-            if (!tradedTokens.has(token)) {
-                tradedTokens.set(token, {
+            if (!tradedTokens.has(address)) {
+                tradedTokens.set(address, {
                     buy_count: 0,
                     sell_count: 0,
-                    positive_sell_count: 0, // Track positive PnL sell trades
+                    positive_sell_count: 0,
                     pnl: 0,
                     pnl_percentage: 0,
                     cost: 0,
                     avg_price: 0,
-                    symbol_address: address
+                    symbol_address: address,
+                    symbol: token
                 });
             }
             buyCount++;
 
-            const tokenData = tradedTokens.get(token);
+            const tokenData = tradedTokens.get(address);
             tokenData.buy_count++;
             tokenData.cost += tradeVolume;
-            totalCost += tradeVolume; // Add to total cost across all tokens
+            totalCost += tradeVolume;
 
-            if (!wallet[token]) wallet[token] = { averagePrice: 0, amount: 0 };
-            const current = wallet[token];
+            if (!wallet[address]) wallet[address] = { averagePrice: 0, amount: 0 };
+            const current = wallet[address];
             current.amount += amount;
-            current.averagePrice = (current.averagePrice * (current.amount - amount) + amount * price) / current.amount;
+            current.averagePrice =
+                (current.averagePrice * (current.amount - amount) + amount * price) / current.amount;
 
             tokenData.avg_price = current.averagePrice;
             tokenData.holding = current.amount;
-
         } else if (tradeType === 'sell') {
-            // Skip sell trades if the token has no buy history
-            if (!tradedTokens.has(token)) {
-                console.warn(`Skipping sell trade for token ${token} as no prior buy trade exists.`);
+            if (!tradedTokens.has(address)) {
+                console.warn(`Skipping sell trade for token ${address} as no prior buy trade exists.`);
                 continue;
             }
 
-            const tokenData = tradedTokens.get(token);
-            if (!wallet[token] || wallet[token].amount < amount) {
-                console.error(`Insufficient amount to sell for token ${token}`);
+            const tokenData = tradedTokens.get(address);
+            if (!wallet[address] || wallet[address].amount < amount) {
+                console.error(`Insufficient amount to sell for token ${address}`);
                 continue;
             }
 
             sellCount++;
             tokenData.sell_count++;
 
-            const current = wallet[token];
+            const current = wallet[address];
             const pnl = amount * (price - current.averagePrice);
-            totalPnl += pnl; // Aggregate total PnL
+            totalPnl += pnl;
 
             if (pnl > 0) {
                 tokenData.positive_sell_count++;
                 positiveSellCount++;
             }
 
-            tokenData.pnl += pnl; // Aggregate PnL for the token
+            tokenData.pnl += pnl;
             current.amount -= amount;
 
             if (tokenData.cost > 0) {
@@ -846,26 +1071,23 @@ const processTransactionsOnly = async function (fetchedData, userId, userAddress
             tokenData.holding = current.amount;
         }
 
-        const tokenData = tradedTokens.get(token);
-        if (tokenData) {
-            transactionData.push({
-                txhash: transaction.tx_hash,
-                symbol: token,
-                symbol_address: tokenData.symbol_address,
-                position: tradeType,
-                time: transaction.block_unix_time,
-                datetime: moment.unix(transaction.block_unix_time).utc().format('YYYY-MM-DD HH:mm:ss'),
-                cost: price,
-                balance: amount,
-                size: tradeVolume,
-                pnl: tokenData.pnl,
-                pnl_percentage: tokenData.pnl_percentage,
-                user_num: userId,
-                user_address: userAddress,
-                hold_amount: wallet[token]?.amount || 0,
-                avg_price: wallet[token]?.averagePrice || 0,
-            });
-        }
+        transactionData.push({
+            txhash: transaction.tx_hash,
+            symbol: token,
+            symbol_address: address,
+            position: tradeType,
+            time: transaction.block_unix_time,
+            datetime: moment.unix(transaction.block_unix_time).utc().format('YYYY-MM-DD HH:mm:ss'),
+            cost: price,
+            balance: amount,
+            size: tradeVolume,
+            pnl: tradedTokens.get(address)?.pnl || 0,
+            pnl_percentage: tradedTokens.get(address)?.pnl_percentage || 0,
+            user_num: userId,
+            user_address: userAddress,
+            hold_amount: wallet[address]?.amount || 0,
+            avg_price: wallet[address]?.averagePrice || 0,
+        });
     }
 
     // Calculate win rates for all tokens
@@ -883,9 +1105,6 @@ const processTransactionsOnly = async function (fetchedData, userId, userAddress
     const pnlPerToken = tokenCount > 0 ? totalPnl / tokenCount : 0; // PnL per token
     const costPerToken = tokenCount > 0 ? totalCost / tokenCount : 0; // Cost per token
 
-    // Convert tradedTokens map to an object for metadata
-    const tradedTokensObject = Object.fromEntries(tradedTokens);
-
     // Generate metadata
     const metadata = {
         total_transactions: buyCount + sellCount,
@@ -897,14 +1116,13 @@ const processTransactionsOnly = async function (fetchedData, userId, userAddress
         token_count: tokenCount,
         total_cost: totalCost,
         pnl_per_token: pnlPerToken,
-        cost_per_token: costPerToken, //Include cost per token
-        //sol_amount: solAmount,
-        traded_tokens: tradedTokensObject, // Include token-specific metrics
+        cost_per_token: costPerToken,
+        traded_tokens: Object.fromEntries(tradedTokens), // Convert Map to Object
     };
 
-    //console.log("Metadata: ", metadata);
     return { transactions: transactionData, metadata };
 };
+
 async function fetchTransactionHistory(address, days) {
     console.log("fetching transaction history of " + address);
     const startTime = Math.floor(Date.now() / 1000) - days * 24 * 60 * 60;
@@ -990,6 +1208,15 @@ router.get('/upnl', async function(req, res) {
 router.get('/extrapnl', async function(req, res) {
     try {
         const result = await getExtraPnl();
+        res.status(200).send(result);
+    } catch (error) {
+        console.error('Error processing extra pnls:', error);
+        res.status(500).send('Error processing extra pnls');
+    }
+});
+router.get('/extrapnlday', async function(req, res) {
+    try {
+        const result = await getExtraPnlDay();
         res.status(200).send(result);
     } catch (error) {
         console.error('Error processing extra pnls:', error);
