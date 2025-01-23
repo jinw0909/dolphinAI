@@ -662,7 +662,6 @@ const getExtraPnlDay = async function() {
         // throw error;
     }
 
-
 }
 // const getTotalPnl = async function() {
 //     try {
@@ -940,6 +939,7 @@ const getExtraPnlDay = async function() {
 //     return { transactions: transactionData, metadata };
 // };
 const processTransactionsOnly = async function (fetchedData, userId, userAddress) {
+
     console.log('Processing only address: ', userAddress);
     if (!fetchedData || fetchedData.length === 0) {
         console.error("Fetched data is empty or invalid.");
@@ -1045,9 +1045,19 @@ const processTransactionsOnly = async function (fetchedData, userId, userAddress
             }
 
             const tokenData = tradedTokens.get(address);
-            if (!wallet[address] || wallet[address].amount < amount) {
-                console.error(`Insufficient amount to sell for token ${address}`);
-                continue;
+            const epsilon = 1e-6;
+            if (!wallet[address] || wallet[address].amount + epsilon < amount) {
+                console.error(`Insufficient amount to sell for token ${address} / txhash ${transaction.tx_hash}`);
+                // If the difference is within the epsilon range, allow the transaction and set balance to 0
+                if (wallet[address] && Math.abs(wallet[address].amount - amount) <= epsilon) {
+                    console.warn(`Adjusting balance for token ${address} due to rounding error.`);
+                    wallet[address].amount = 0; // Set balance to 0
+                } else {
+                    continue; // Skip the transaction as the gap exceeds epsilon
+                }
+            } else {
+                //proceed with normal sell logic
+                wallet[address].amount -= amount;
             }
 
             sellCount++;
@@ -1063,12 +1073,12 @@ const processTransactionsOnly = async function (fetchedData, userId, userAddress
             }
 
             tokenData.pnl += pnl;
-            current.amount -= amount;
+            // current.amount -= amount;
 
             if (tokenData.cost > 0) {
                 tokenData.pnl_percentage = (tokenData.pnl / tokenData.cost) * 100;
             }
-            tokenData.holding = current.amount;
+            tokenData.holding = wallet[address].amount;
         }
 
         transactionData.push({
@@ -1424,12 +1434,14 @@ router.get('/txhistory/:address', async function(req, res) {
         });
 
         if (!userRecord) {
-            return res.status(404).send({ message: 'User not found in TopTraders table.' });
+            // return res.status(404).send({ message: 'User not found in TopTraders table.' });
+            tempUserAddress = walletAddress;
+            tempUserNum = 0;
+        } else {
+            // Save the user address and user number globally
+            tempUserAddress = userRecord.address;
+            tempUserNum = userRecord.id;
         }
-
-        // Save the user address and user number globally
-        tempUserAddress = userRecord.address;
-        tempUserNum = userRecord.id;
 
         // Step 2: Fetch the transaction history for the wallet address
         const result = await fetchTransactionHistory(walletAddress, 7);
