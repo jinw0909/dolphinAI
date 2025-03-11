@@ -300,10 +300,6 @@ const processTransactionData = async function () {
 
                 console.log("TradedTokens upsert completed");
 
-
-
-                console.log("TradedTokens upsert completed");
-
                 for (const [token, data] of Object.entries(tradedTokens)) {
                     try {
                         await Tokens.upsert({
@@ -1445,6 +1441,39 @@ router.get('/txhistory/:address', async function(req, res) {
 
         // Step 2: Fetch the transaction history for the wallet address
         const result = await fetchTransactionHistory(walletAddress, 7);
+        tempTxHistory = result;
+        res.status(200).send(result);
+    } catch (error) {
+        res.status(500).send('failed to fetch tx history of user');
+    }
+});
+router.get('/txhistory/:address/:day', async function(req, res) {
+    const walletAddress = req.params.address;
+    const dayRange = req.params.day;
+
+    // Validate if dayRange can be parsed into an integer
+    if (isNaN(parseInt(dayRange))) {
+        return res.status(400).send({ message: 'Invalid dayRange. Please provide a valid number.' });
+    }
+
+    try {
+        // Step 1: Fetch the user's record from the TopTraders table
+        const userRecord = await TopTrader.findOne({
+            where: { address: walletAddress },
+        });
+
+        if (!userRecord) {
+            // return res.status(404).send({ message: 'User not found in TopTraders table.' });
+            tempUserAddress = walletAddress;
+            tempUserNum = 0;
+        } else {
+            // Save the user address and user number globally
+            tempUserAddress = userRecord.address;
+            tempUserNum = userRecord.id;
+        }
+
+        // Step 2: Fetch the transaction history for the wallet address
+        const result = await fetchTransactionHistory(walletAddress, dayRange);
         tempTxHistory = result;
         res.status(200).send(result);
     } catch (error) {

@@ -4,6 +4,7 @@ const TxHistoryModel = require('./txHistory');
 const TokensModel = require('./tokens');
 const TradedTokensModel = require('./tradedTokens');
 const UserWalletModel = require('./userWallet');
+const WhitelistModel = require('./whitelist');
 // const CrawledWalletModel = require('./crawledWallet');
 
 // const sequelize = new Sequelize('dolphin', 'admin', 'qwer1234', {
@@ -27,6 +28,7 @@ const TxHistory = TxHistoryModel(sequelize);
 const Tokens = TokensModel(sequelize);
 const TradedTokens = TradedTokensModel(sequelize);
 const UserWallet = UserWalletModel(sequelize);
+const Whitelist = WhitelistModel(sequelize);
 // const CrawledWallet = CrawledWalletModel(sequelize);
 
 TradedTokens.belongsTo(Tokens, {
@@ -62,5 +64,6 @@ module.exports = {
     Tokens,
     TradedTokens,
     UserWallet,
+    Whitelist
     // CrawledWallet
 };

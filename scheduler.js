@@ -6,7 +6,7 @@ const { setTarget } = require('./routes/target');
 const { processPortfolio } = require('./routes/portfolio');
 // Schedule the function using node-cron
 // step 1. getTraders
-cron.schedule('0 * * * *', async () => {
+cron.schedule('0 */3 * * *', async () => {
     const now = new Date();
     const currentTime = now.toISOString(); // Log the current time in ISO format
     console.log(`Running getTraders() at ${currentTime}`);
@@ -18,7 +18,7 @@ cron.schedule('0 * * * *', async () => {
     }
 });
 // step 2. processTraders
-cron.schedule('2 * * * *', async () => {
+cron.schedule('2 */3 * * *', async () => {
     const now = new Date();
     const currentTime = now.toISOString(); // Log the current time in ISO format
     console.log(`Running processTraders() at ${currentTime}`);
@@ -30,7 +30,7 @@ cron.schedule('2 * * * *', async () => {
     }
 });
 // step 3. processTransactionData (main function)
-cron.schedule('10 * * * *', async () => {
+cron.schedule('10 */3 * * *', async () => {
     const now = new Date();
     const currentTime = now.toISOString(); // Log the current time in ISO format
     console.log(`Running processTransactionData() at ${currentTime}`);
@@ -42,7 +42,7 @@ cron.schedule('10 * * * *', async () => {
     }
 });
 // step 4. getPrice
-cron.schedule('20 * * * *', async () => {
+cron.schedule('20 */3 * * *', async () => {
     const now = new Date();
     const currentTime = now.toISOString(); // Log the current time in ISO format
     console.log(`Running getPrice() at ${currentTime}`);
@@ -54,7 +54,7 @@ cron.schedule('20 * * * *', async () => {
     }
 });
 // step 5. getIcon
-cron.schedule('23 * * * *', async () => {
+cron.schedule('23 */3 * * *', async () => {
     const now = new Date();
     const currentTime = now.toISOString(); // Log the current time in ISO format
     console.log(`Running getIcon() at ${currentTime}`);
@@ -66,7 +66,7 @@ cron.schedule('23 * * * *', async () => {
     }
 });
 // step 6. processUpnl
-cron.schedule('28 * * * *', async () => {
+cron.schedule('28 */3 * * *', async () => {
     const now = new Date();
     const currentTime = now.toISOString(); // Log the current time in ISO format
     console.log(`Running processUpnl() at ${currentTime}`);
@@ -78,7 +78,7 @@ cron.schedule('28 * * * *', async () => {
     }
 });
 // step 7. processPortfolio
-cron.schedule('30 * * * *', async () => {
+cron.schedule('30 */3 * * *', async () => {
     const now = new Date();
     const currentTime = now.toISOString(); // Log the current time in ISO format
     console.log(`Running processPortfolio() at ${currentTime}`);
@@ -90,7 +90,7 @@ cron.schedule('30 * * * *', async () => {
     }
 });
 // step 8. getExtraPnl
-cron.schedule('35 * * * *', async () => {
+cron.schedule('35 */3 * * *', async () => {
     const now = new Date();
     const currentTime = now.toISOString(); // Log the current time in ISO format
     console.log(`Running getExtraPnl() at ${currentTime}`);
@@ -102,7 +102,7 @@ cron.schedule('35 * * * *', async () => {
     }
 });
 // step 9. setTarget
-cron.schedule('40 * * * *', async () => {
+cron.schedule('40 */3 * * *', async () => {
     const now = new Date();
     const currentTime = now.toISOString(); // Log the current time in ISO format
     console.log(`Running setTarget() at ${currentTime}`);
@@ -114,7 +114,7 @@ cron.schedule('40 * * * *', async () => {
     }
 });
 // step 10. clean
-cron.schedule('42 * * * *', async () => {
+cron.schedule('42 */3 * * *', async () => {
     const now = new Date();
     const currentTime = now.toISOString(); // Log the current time in ISO format
     console.log(`Running clean() at ${currentTime}`);
@@ -125,8 +125,8 @@ cron.schedule('42 * * * *', async () => {
         console.error('Error during clean():', error.message);
     }
 });
-// step 11. getExtraPnlDay
-cron.schedule('50 0,6,12,18 * * *', async () => {
+//step 11. getExtraPnlDay
+cron.schedule('50 0,12 * * *', async () => {
     const now = new Date();
     const currentTime = now.toISOString(); // Log the current time in ISO format
     console.log(`Running getExtraPnlDay() at ${currentTime}`);

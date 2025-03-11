@@ -1,5 +1,5 @@
 require('dotenv').config();
-require('./scheduler');
+// require('./scheduler');
 var createError = require('http-errors');
 var express = require('express');
 var path = require('path');
@@ -14,6 +14,7 @@ const { tokensRouter } = require('./routes/tokens');
 const { cleanerRouter} = require('./routes/cleaner');
 const { portfolioRouter} = require('./routes/portfolio');
 const { targetRouter } = require('./routes/target');
+const { gptRouter } = require('./routes/gpt');
 
 var app = express();
 
@@ -35,6 +36,7 @@ app.use('/tokens', tokensRouter);
 app.use('/clean', cleanerRouter);
 app.use('/portfolio', portfolioRouter);
 app.use('/target', targetRouter);
+app.use('/gpt', gptRouter);
 
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {
